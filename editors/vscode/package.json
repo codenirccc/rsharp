@@ -1,0 +1,135 @@
+{
+  "name": "rsharp",
+  "displayName": "R# and Mini",
+  "description": "Syntax highlighting, snippets and problem matchers for R# (.rsx) and Mini (.mini).",
+  "version": "0.1.1",
+  "publisher": "olltaterfx",
+  "license": "MIT",
+  "icon": "./icon.png",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets"
+  ],
+  "keywords": [
+    "rsharp",
+    "rsx",
+    "mini",
+    "compiler"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "rsx",
+        "aliases": [
+          "R#",
+          "rsx"
+        ],
+        "extensions": [
+          ".rsx"
+        ],
+        "configuration": "./language-configuration-rsx.json"
+      },
+      {
+        "id": "mini",
+        "aliases": [
+          "Mini",
+          "mini"
+        ],
+        "extensions": [
+          ".mini"
+        ],
+        "configuration": "./language-configuration-mini.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "rsx",
+        "scopeName": "source.rsx",
+        "path": "./syntaxes/rsx.tmLanguage.json"
+      },
+      {
+        "language": "mini",
+        "scopeName": "source.mini",
+        "path": "./syntaxes/mini.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "rsx",
+        "path": "./snippets/rsx.json"
+      },
+      {
+        "language": "mini",
+        "path": "./snippets/mini.json"
+      }
+    ],
+    "problemMatchers": [
+      {
+        "name": "rsc",
+        "owner": "rsc",
+        "source": "rsc",
+        "applyTo": "allDocuments",
+        "fileLocation": [
+          "autoDetect",
+          "${workspaceFolder}"
+        ],
+        "pattern": {
+          "regexp": "^rsc: (.+?): line (\\d+):(\\d+): (.+)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "message": 4
+        }
+      },
+      {
+        "name": "rsc-line",
+        "owner": "rsc",
+        "source": "rsc",
+        "applyTo": "allDocuments",
+        "fileLocation": [
+          "autoDetect",
+          "${workspaceFolder}"
+        ],
+        "pattern": {
+          "regexp": "^rsc: (.+?\\.rsx): line (\\d+): (?!\\d+:)(.+)$",
+          "file": 1,
+          "line": 2,
+          "message": 3
+        }
+      },
+      {
+        "name": "rsc-other",
+        "owner": "rsc",
+        "source": "rsc",
+        "applyTo": "allDocuments",
+        "fileLocation": [
+          "autoDetect",
+          "${workspaceFolder}"
+        ],
+        "pattern": {
+          "regexp": "^rsc: (.+?\\.rsx): (?!line \\d+:)(.+)$",
+          "file": 1,
+          "message": 2
+        }
+      },
+      {
+        "name": "rscb",
+        "owner": "rsc",
+        "source": "rscb",
+        "applyTo": "allDocuments",
+        "fileLocation": [
+          "autoDetect",
+          "${workspaceFolder}"
+        ],
+        "pattern": {
+          "regexp": "^rscb: (.+?): (.+)$",
+          "file": 1,
+          "message": 2
+        }
+      }
+    ]
+  }
+}

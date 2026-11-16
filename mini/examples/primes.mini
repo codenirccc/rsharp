@@ -1,0 +1,23 @@
+// primes under fifty, and how many there were
+fn main() {
+  print(2);
+  var count = 1;
+  var n = 3;
+  while (n < 50) {
+    var d = 2;
+    var prime = 1;
+    while (d * d <= n) {
+      if (n % d == 0) {
+        prime = 0;
+      }
+      d = d + 1;
+    }
+    if (prime == 1) {
+      print(n);
+      count = count + 1;
+    }
+    n = n + 2;
+  }
+  print(count);
+  return 0;
+}

@@ -1,0 +1,188 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "R#",
+  "scopeName": "source.rsx",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#include" },
+    { "include": "#declarations" },
+    { "include": "#keywords" },
+    { "include": "#constants" },
+    { "include": "#types" },
+    { "include": "#builtins" },
+    { "include": "#labels" },
+    { "include": "#calls" },
+    { "include": "#numbers" },
+    { "include": "#strings" },
+    { "include": "#operators" },
+    { "include": "#punctuation" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        { "name": "comment.block.rsx", "begin": "/\\*", "end": "\\*/" },
+        { "name": "comment.line.double-slash.rsx", "match": "//.*$" }
+      ]
+    },
+    "include": {
+      "patterns": [
+        {
+          "name": "meta.preprocessor.include.rsx",
+          "match": "^\\s*(include)\\s+(\"[^\"]*\")",
+          "captures": {
+            "1": { "name": "keyword.control.import.rsx" },
+            "2": { "name": "string.quoted.double.rsx" }
+          }
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "name": "meta.extern.rsx",
+          "match": "\\b(extern)\\b",
+          "captures": { "1": { "name": "storage.modifier.rsx" } }
+        },
+        {
+          "name": "meta.function.generic.rsx",
+          "match": "\\b(fn)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*<([^<>]*)>",
+          "captures": {
+            "1": { "name": "storage.type.function.rsx" },
+            "2": { "name": "entity.name.function.rsx" },
+            "3": { "name": "storage.type.generic.rsx" }
+          }
+        },
+        {
+          "name": "meta.function.rsx",
+          "match": "\\b(fn)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.function.rsx" },
+            "2": { "name": "entity.name.function.rsx" }
+          }
+        },
+        {
+          "name": "meta.struct.rsx",
+          "match": "\\b(struct)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.struct.rsx" },
+            "2": { "name": "entity.name.type.rsx" }
+          }
+        },
+        {
+          "name": "meta.enum.rsx",
+          "match": "\\b(enum)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.enum.rsx" },
+            "2": { "name": "entity.name.type.rsx" }
+          }
+        },
+        {
+          "name": "meta.impl.rsx",
+          "match": "\\b(impl)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.impl.rsx" },
+            "2": { "name": "entity.name.type.rsx" }
+          }
+        },
+        {
+          "name": "meta.module.rsx",
+          "match": "\\b(mod)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.namespace.rsx" },
+            "2": { "name": "entity.name.namespace.rsx" }
+          }
+        },
+        {
+          "name": "meta.static.rsx",
+          "match": "\\b(static)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.static.rsx" },
+            "2": { "name": "entity.name.constant.rsx" }
+          }
+        },
+        {
+          "name": "meta.const.rsx",
+          "match": "\\b(const)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.const.rsx" },
+            "2": { "name": "entity.name.constant.rsx" }
+          }
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.rsx",
+          "match": "\\b(let|var|return|if|else|while|loop|for|in|break|continue|match|unsafe|as|end)\\b"
+        },
+        { "name": "storage.modifier.rsx", "match": "\\b(mut|self)\\b" }
+      ]
+    },
+    "constants": {
+      "patterns": [{ "name": "constant.language.rsx", "match": "\\b(true|false|null)\\b" }]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "storage.type.primitive.rsx",
+          "match": "\\b(i8|i16|i32|i64|u8|u16|u32|u64|f32|f64|bool|void)\\b"
+        },
+        { "name": "storage.type.generic.rsx", "match": "\\b(ptr|Task|Box)\\b" },
+        { "name": "support.type.rsx", "match": "\\b[A-Z][A-Za-z0-9_]*\\b" }
+      ]
+    },
+    "builtins": {
+      "patterns": [
+        { "name": "support.function.builtin.rsx", "match": "\\b(sizeof|zero)\\b" }
+      ]
+    },
+    "labels": {
+      "patterns": [
+        {
+          "comment": "loop label: 'outer: while (n > 0) { break 'outer; }",
+          "match": "'([A-Za-z_][A-Za-z0-9_]*)\\s*:",
+          "captures": { "1": { "name": "entity.name.label.rsx" } }
+        }
+      ]
+    },
+    "calls": {
+      "patterns": [
+        {
+          "name": "meta.call.rsx",
+          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\()",
+          "captures": { "1": { "name": "entity.name.function.call.rsx" } }
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.rsx",
+          "match": "\\b(0[xX][0-9a-fA-F_]+|0[bB][01_]+|\\d[\\d_]*\\.[\\d_]+([eE][+-]?\\d+)?|\\d[\\d_]*)\\b"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.rsx",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [{ "name": "constant.character.escape.rsx", "match": "\\\\." }]
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.rsx",
+          "match": "(<<=|>>=|\\+=|-=|\\*=|/=|%=|&=|\\|=|\\^=|==|!=|<=|>=|&&|\\|\\||<<|>>|->|=>|\\.\\.=|\\.\\.|::|\\+|-|\\*|/|%|=|<|>|!|&|\\||\\^|~)"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [{ "name": "punctuation.rsx", "match": "[()\\[\\]{},;:.]" }]
+    }
+  }
+}

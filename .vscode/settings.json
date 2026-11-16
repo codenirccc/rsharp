@@ -1,0 +1,20 @@
+{
+  "files.associations": {
+    "*.rsx": "rsx",
+    "*.mini": "mini",
+    "*.rsi": "clojure"
+  },
+  "editor.tabSize": 4,
+  "editor.insertSpaces": true,
+  "editor.detectIndentation": false,
+  "search.exclude": {
+    "**/target": true,
+    "build": true
+  },
+  "files.exclude": {
+    "**/*.cmi": true,
+    "**/*.cmx": true,
+    "**/*.o": true,
+    "**/__pycache__": true
+  }
+}

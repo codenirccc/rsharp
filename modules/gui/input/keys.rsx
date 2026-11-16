@@ -1,0 +1,12 @@
+const VK_BACK: i64 = 8;
+const VK_TAB: i64 = 9;
+const VK_RETURN: i64 = 13;
+const VK_ESCAPE: i64 = 27;
+const VK_SPACE: i64 = 32;
+const VK_END: i64 = 35;
+const VK_HOME: i64 = 36;
+const VK_LEFT: i64 = 37;
+const VK_UP: i64 = 38;
+const VK_RIGHT: i64 = 39;
+const VK_DOWN: i64 = 40;
+const VK_DELETE: i64 = 46;

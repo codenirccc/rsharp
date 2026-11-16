@@ -1,0 +1,15 @@
+func @main() -> i64 {
+entry:
+  %0 = alloca i64, 1
+  store i64 0, ptr %0
+  br loop
+loop:
+  %1 = load i64, ptr %0
+  %2 = add i64 %1, 2
+  store i64 %2, ptr %0
+  %3 = icmp slt i64 %2, 100
+  condbr %3, loop, done
+done:
+  %4 = load i64, ptr %0
+  ret i64 %4
+}

@@ -1,0 +1,39 @@
+// case — one value, many arms, an optional else
+fn label(n) {
+  var out = 0;
+  case (n) {
+    0, 1 => { out = 100; }
+    2 => { out = 200; }
+    3, 4, 5 => { out = 300; }
+    else => { out = 999; }
+  }
+  return out;
+}
+
+fn main() {
+  var i = 0;
+  var sum = 0;
+  while (i < 8) {
+    case (i) {
+      2 => {
+        i = i + 1;
+        continue;
+      }
+      6 => { break; }
+      else => { sum = sum + label(i); }
+    }
+    i = i + 1;
+  }
+  print(sum);
+
+  case (sum % 3) {
+    0 => { print(1); }
+    1, 2 => { print(2); }
+  }
+
+  case (7) {
+    0 => { print(0); }
+    else => { print(label(9)); }
+  }
+  return 0;
+}

@@ -1,0 +1,12 @@
+[package]
+name = "cdc"
+version = "0.1.0"
+edition = "2021"
+description = "CDC: registry, resolver, and build driver for R# packages"
+license = "MIT"
+
+[[bin]]
+name = "cdc"
+path = "src/main.rs"
+
+[dependencies]

@@ -1,0 +1,17 @@
+// break and continue inside one loop
+fn main() {
+  var i = 0;
+  var hits = 0;
+  while (i < 20) {
+    i = i + 1;
+    if (i % 3 == 0) {
+      continue;
+    }
+    if (i > 15) {
+      break;
+    }
+    hits = hits + 1;
+  }
+  print(hits);
+  return 0;
+}

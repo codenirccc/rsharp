@@ -1,0 +1,22 @@
+// operators, precedence, and compound assignment
+fn main() {
+  print(2 + 3 * 4);
+  print((2 + 3) * 4);
+  print(100 - 20 - 5);
+  print(100 / 5 / 2);
+  print(17 % 5);
+
+  var e = 1;
+  e += 41;
+  e *= 2;
+  e -= 4;
+  e /= 4;
+  e %= 10;
+  print(e);
+
+  print(-3 * -3);
+  print(!(1 == 2));
+  print((1 < 2) && (2 < 3));
+  print((1 > 2) || (2 < 3));
+  return 0;
+}

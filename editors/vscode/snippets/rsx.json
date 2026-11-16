@@ -1,0 +1,62 @@
+{
+  "function": {
+    "prefix": "fn",
+    "body": ["fn ${1:name}(${2:arg}: ${3:i64}) -> ${4:i64} {", "\t$0", "}"],
+    "description": "function definition"
+  },
+  "program": {
+    "prefix": "main",
+    "body": ["fn main() -> i32 {", "\t$0", "\treturn 0;", "}"],
+    "description": "program entry point"
+  },
+  "extern": {
+    "prefix": "extern",
+    "body": ["extern fn ${1:printf}(fmt: ptr<u8>, ...) -> ${2:i32};"],
+    "description": "extern declaration"
+  },
+  "struct": {
+    "prefix": "struct",
+    "body": ["struct ${1:Name} {", "\t${2:field}: ${3:i64},", "\t$0", "}"],
+    "description": "struct definition"
+  },
+  "enum": {
+    "prefix": "enum",
+    "body": ["enum ${1:Name} {", "\t${2:Unit},", "\t${3:Payload}(${4:i64}),", "\t$0", "}"],
+    "description": "enum definition"
+  },
+  "impl": {
+    "prefix": "impl",
+    "body": ["impl ${1:Type} {", "\tfn ${2:method}(self: &${1:Type}) -> ${3:i64} {", "\t\t$0", "\t}", "}"],
+    "description": "inherent methods"
+  },
+  "for": {
+    "prefix": "for",
+    "body": ["for ${1:i} in ${2:0}..${3:n} {", "\t$0", "}"],
+    "description": "range loop"
+  },
+  "while": {
+    "prefix": "while",
+    "body": ["while (${1:condition}) {", "\t$0", "}"],
+    "description": "while loop"
+  },
+  "loop": {
+    "prefix": "loop",
+    "body": ["loop {", "\t$0", "}"],
+    "description": "infinite loop"
+  },
+  "match": {
+    "prefix": "match",
+    "body": ["match ${1:value} {", "\t${2:0} => {", "\t\t$0", "\t},", "\t_ => {", "\t},", "}"],
+    "description": "match statement"
+  },
+  "unsafe": {
+    "prefix": "unsafe",
+    "body": ["unsafe {", "\t$0", "}"],
+    "description": "unsafe block"
+  },
+  "mod": {
+    "prefix": "mod",
+    "body": ["mod ${1:name} {", "\t$0", "}"],
+    "description": "module block"
+  }
+}

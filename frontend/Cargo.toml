@@ -1,0 +1,12 @@
+[package]
+name = "rsharp-front"
+version = "0.1.0"
+edition = "2021"
+description = "R# front end: lexer, parser, and S-expression IR emitter"
+license = "MIT"
+
+[[bin]]
+name = "rsc"
+path = "src/main.rs"
+
+[dependencies]

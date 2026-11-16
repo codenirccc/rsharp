@@ -1,0 +1,9 @@
+func @main() -> i64 {
+entry:
+  %0 = add i32 2000000000, 2000000000
+  %1 = sext i32 %0 to i64
+  %2 = add i64 %1, 294967296
+  %3 = icmp slt i32 %0, 0
+  %4 = select i64 %3, i64 %2, i64 1
+  ret i64 %4
+}

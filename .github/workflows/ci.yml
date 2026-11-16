@@ -1,0 +1,97 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # The Mach-O encoder is x86-64, so the macOS job runs on Intel: that is the
+  # one runner where the images this repo writes can actually be executed.
+  macos:
+    name: macos x86_64 (builds and runs the Mach-O images)
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: "5.2"
+          dune-cache: false
+
+      - name: build (make)
+        run: |
+          chmod +x build.sh rsc.sh regress.sh backend/build.sh mini/run.sh mini/test.sh rhir/all.sh
+          make
+
+      - name: regress (make test, every example, including the macOS one)
+        run: make test
+
+      - name: rhir text roundtrip
+        run: ./rhir/all.sh
+
+      - name: package the toolchain
+        run: |
+          mkdir -p dist
+          cp frontend/target/release/rsc backend/rscb mini/mini dist/
+          tar -czf rsharp-macos-x86_64.tar.gz -C dist .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rsharp-macos-x86_64
+          path: rsharp-macos-x86_64.tar.gz
+          if-no-files-found: error
+
+  windows:
+    name: windows (ucrt64)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: mingw-w64-ucrt-x86_64-ocaml
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: build
+        run: ./build.sh
+
+      - name: regress
+        run: ./regress.sh
+
+  # No ELF writer yet, so Linux builds the toolchain and emits a Mach-O to
+  # prove the driver is portable. Nothing here executes.
+  linux:
+    name: linux (build only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: "5.2"
+          dune-cache: false
+
+      - name: build
+        run: |
+          chmod +x build.sh rsc.sh regress.sh backend/build.sh mini/run.sh mini/test.sh rhir/all.sh
+          ./build.sh
+
+      - name: emit a Mach-O image
+        run: |
+          ./rsc.sh -t macos examples/hello.rsx build/hello
+          file build/hello
+          ls -l build/hello

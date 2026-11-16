@@ -1,0 +1,19 @@
+[package]
+name = "rhir"
+version = "0.1.0"
+edition = "2021"
+description = "rhir: an SSA intermediate representation, optimiser, x64 code generator and PE linker in one crate"
+
+[lib]
+name = "rhir"
+path = "src/lib.rs"
+
+[[bin]]
+name = "rhirc"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

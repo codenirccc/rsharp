@@ -1,0 +1,131 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "rsc: build current file",
+      "detail": "rsc.sh / rsc.cmd on the focused .rsx file",
+      "type": "shell",
+      "command": "./rsc.sh",
+      "args": ["${file}", "${workspaceFolder}/build/${fileBasenameNoExtension}"],
+      "windows": {
+        "command": "rsc.cmd",
+        "args": ["${file}", "${workspaceFolder}\\build\\${fileBasenameNoExtension}.exe"]
+      },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [
+        {
+          "owner": "rsc",
+          "source": "rsc",
+          "fileLocation": ["autoDetect", "${workspaceFolder}"],
+          "pattern": {
+            "regexp": "^rsc: (.+?): line (\\d+):(\\d+): (.+)$",
+            "file": 1,
+            "line": 2,
+            "column": 3,
+            "message": 4
+          }
+        },
+        {
+          "owner": "rsc",
+          "source": "rsc",
+          "fileLocation": ["autoDetect", "${workspaceFolder}"],
+          "pattern": {
+            "regexp": "^rsc: (.+?\\.rsx): line (\\d+): (?!\\d+:)(.+)$",
+            "file": 1,
+            "line": 2,
+            "message": 3
+          }
+        },
+        {
+          "owner": "rsc",
+          "source": "rsc",
+          "fileLocation": ["autoDetect", "${workspaceFolder}"],
+          "pattern": {
+            "regexp": "^rsc: (.+?\\.rsx): (?!line \\d+:)(.+)$",
+            "file": 1,
+            "message": 2
+          }
+        },
+        {
+          "owner": "rsc",
+          "source": "rscb",
+          "fileLocation": ["autoDetect", "${workspaceFolder}"],
+          "pattern": {
+            "regexp": "^rscb: (.+?): (.+)$",
+            "file": 1,
+            "message": 2
+          }
+        }
+      ],
+      "presentation": {
+        "reveal": "silent",
+        "clear": true,
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "rsc: run current file",
+      "detail": "build, then execute the result",
+      "type": "shell",
+      "command": "${workspaceFolder}/build/${fileBasenameNoExtension}",
+      "windows": {
+        "command": "${workspaceFolder}\\build\\${fileBasenameNoExtension}.exe"
+      },
+      "dependsOn": ["rsc: build current file"],
+      "problemMatcher": [],
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "rsc: build everything",
+      "detail": "front end, back end, cdc",
+      "type": "shell",
+      "command": "./build.sh",
+      "windows": {
+        "command": "build.cmd"
+      },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "mini: build and run an example",
+      "detail": "compiles the Mini compiler, then mini/examples/fib.mini",
+      "type": "shell",
+      "command": "./mini/run.sh mini/examples/fib.mini",
+      "windows": {
+        "command": "mini\\run.cmd mini\\examples\\fib.mini"
+      },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "tests: every example",
+      "detail": "regress.sh / regress.cmd, which ends with the Mini suite",
+      "type": "shell",
+      "command": "./regress.sh",
+      "windows": {
+        "command": "regress.cmd"
+      },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

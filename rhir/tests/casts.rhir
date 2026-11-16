@@ -1,0 +1,12 @@
+func @main() -> i64 {
+entry:
+  %0 = sdiv i64 100, 7
+  %1 = udiv i64 100, 7
+  %2 = trunc i64 300 to i8
+  %3 = zext i8 %2 to i64
+  %4 = sext i8 %2 to i64
+  %5 = add i64 %0, %1
+  %6 = add i64 %5, %3
+  %7 = add i64 %6, %4
+  ret i64 %7
+}
