@@ -27,7 +27,10 @@ fn expand_includes(
     let src = fs::read_to_string(path).map_err(|e| format!("cannot read '{}': {}", path.display(), e))?;
     let mut in_block = false;
     for line in src.lines() {
-        if !in_block {
+        let was_block = in_block;
+        let (new_block, found) = scan_line(line, in_block);
+        in_block = new_block;
+        if !was_block && found {
             let t = line.trim();
             if let Some(rest) = t.strip_prefix("include") {
                 let rest = rest.trim_start();
@@ -50,17 +53,28 @@ fn expand_includes(
                 }
             }
         }
-        in_block = block_comment_continues(line, in_block);
         out.push_str(line);
         out.push('\n');
     }
     Ok(())
 }
 
-fn block_comment_continues(line: &str, mut in_block: bool) -> bool {
+fn scan_line(line: &str, mut in_block: bool) -> (bool, bool) {
     let b = line.as_bytes();
     let mut i = 0usize;
     let mut in_str = false;
+    let mut found = false;
+    if !in_block {
+        let t = line.trim();
+        if let Some(rest) = t.strip_prefix("include") {
+            let rest = rest.trim_start();
+            if let Some(inner) = rest.strip_prefix('"') {
+                if inner.find('"').is_some() {
+                    found = true;
+                }
+            }
+        }
+    }
     while i < b.len() {
         if in_block {
             if i + 1 < b.len() && b[i] == b'*' && b[i + 1] == b'/' {
@@ -88,7 +102,7 @@ fn block_comment_continues(line: &str, mut in_block: bool) -> bool {
             continue;
         }
         if i + 1 < b.len() && b[i] == b'/' && b[i + 1] == b'/' {
-            return false;
+            return (in_block, found);
         }
         if i + 1 < b.len() && b[i] == b'/' && b[i + 1] == b'*' {
             in_block = true;
@@ -97,7 +111,7 @@ fn block_comment_continues(line: &str, mut in_block: bool) -> bool {
         }
         i += 1;
     }
-    in_block
+    (in_block, found)
 }
 
 fn find_include(from: &Path, name: &str) -> Option<PathBuf> {
