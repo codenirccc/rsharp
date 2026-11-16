@@ -1491,6 +1491,43 @@ cross-builds the macOS demo and checks the Mach-O image. A run ends with
 libobjc and CoreGraphics; it has not been executed on a Mac from this host, only
 checked structurally.
 
+## The game library
+
+`modules/game/` is the game-facing layer of the library tree, same deal as
+the others: plain R#, no externs beyond the math module's, no build step,
+include the umbrella. `game.rsx` pulls in the math and random modules plus
+four layers of its own.
+
+- `vec.rsx` — 2D/3D vector ops: dot, cross, length, distance, normalized
+  components, `v2_lerp`, `v3_cross_*`, `angle_wrap` to [-PI, PI].
+- `noise.rsx` — deterministic 2D value noise keyed off a 64-bit lattice hash
+  (`g_hash2`), bilinear-smoothed with the smoothstep; `noise2(x, y)` in
+  [0, 1); `fbm2` sums four octaves at half amplitude, doubled frequency. Bits
+  match across platforms — the hash is pure integer arithmetic, and Python's
+  `math` module reproduces every constant bit-for-bit (see the test).
+- `easing.rsx` — `quad`/`cubic`/`sine` easings in/out/in-out, `lerp_f64`,
+  `smoothstep_f64`. The in-out curves are symmetric around t = 0.5.
+- `stream.rsx` — named sub-stream derivation for reproducible randomness per
+  system: `stream_seed(master, tag)` mixes a tag through a three-round 64-bit
+  avalanche, then `stream(master, tag)` seeds an `Rng` with it. World-gen can
+  take 1, combat takes 2, particles take 3 — same master seed, same runs,
+  same everything, every time.
+
+```rsx
+include "modules/game/game.rsx";
+
+var s: Rng = stream(1234, 1);
+let h: f64 = noise2(x, y);
+let p: (f64, f64) = v2_lerp(0.0, 0.0, 640.0, 360.0, ease_quad_inout(t));
+```
+
+`work\game\run.cmd` builds and runs the suite against reference values from
+an independent implementation: vector lengths and dots, the lattice-noise
+values at five coordinates including the negative quadrant, fbm at two, every
+easing curve against `math.sin`-computed reference outputs, both
+`stream_seed` values, and PRNG determinism/divergence across two streams and
+across a re-seed. A run ends with `game suite: ok`.
+
 ## The math module
 
 `modules/math.rsx` is a floating point and integer math library in plain R# —
