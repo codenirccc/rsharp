@@ -13,8 +13,6 @@ pub struct Token {
     pub tok: Tok,
     pub line: u32,
     pub col: u32,
-    pub start: usize,
-    pub end: usize,
 }
 
 fn sym_at(src: &[u8], pos: usize) -> Option<(&'static str, usize)> {
@@ -244,7 +242,7 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
                 col += 1;
             }
             let text = String::from_utf8_lossy(&b[start..i]).into_owned();
-            out.push(Token { tok: Tok::Ident(text), line: sline, col: scol, start, end: i });
+            out.push(Token { tok: Tok::Ident(text), line: sline, col: scol });
             continue;
         }
 
@@ -262,7 +260,7 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
                 }
                 let v = hex_i64(&b[hs..i])
                     .ok_or_else(|| format!("line {}: hex literal does not fit in 64 bits", sline))?;
-                out.push(Token { tok: Tok::Int(v), line: sline, col: scol, start, end: i });
+                out.push(Token { tok: Tok::Int(v), line: sline, col: scol });
                 continue;
             }
 
@@ -289,7 +287,7 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
                 if j < b.len() && b[j].is_ascii_digit() {
                     is_float = true;
                     i = j;
-                    while i < b.len() && b[i].is_ascii_digit() {
+                    while i < b.len() && (b[i].is_ascii_digit() || b[i] == b'_') {
                         i += 1;
                     }
                 } else {
@@ -301,7 +299,7 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
             if !is_float {
                 let v = dec_i64(&b[start..i])
                     .ok_or_else(|| format!("line {}: integer literal out of range", sline))?;
-                out.push(Token { tok: Tok::Int(v), line: sline, col: scol, start, end: i });
+                out.push(Token { tok: Tok::Int(v), line: sline, col: scol });
                 continue;
             }
             let text: String =
@@ -312,7 +310,7 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
             if !v.is_finite() {
                 return Err(format!("line {}: float literal out of range", sline));
             }
-            out.push(Token { tok: Tok::Float(v), line: sline, col: scol, start, end: i });
+            out.push(Token { tok: Tok::Float(v), line: sline, col: scol });
             continue;
         }
 
@@ -378,13 +376,13 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
             }
             let s = String::from_utf8(buf)
                 .map_err(|_| format!("line {}: string literal is not valid UTF-8", sline))?;
-            out.push(Token { tok: Tok::Str(s), line: sline, col: scol, start, end: i });
+            out.push(Token { tok: Tok::Str(s), line: sline, col: scol });
             continue;
         }
 
         match sym_at(b, i) {
             Some((s, len)) => {
-                out.push(Token { tok: Tok::Sym(s), line: sline, col: scol, start: i, end: i + len });
+                out.push(Token { tok: Tok::Sym(s), line: sline, col: scol });
                 i += len;
                 col += len as u32;
             }
@@ -394,6 +392,6 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
         }
     }
 
-    out.push(Token { tok: Tok::Eof, line, col, start: i, end: i });
+    out.push(Token { tok: Tok::Eof, line, col });
     Ok(out)
 }

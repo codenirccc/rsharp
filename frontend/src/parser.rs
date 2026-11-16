@@ -102,8 +102,6 @@ impl Parser {
                 tok: Tok::Eof,
                 line: 0,
                 col: 0,
-                start: 0,
-                end: 0,
             });
             self.i += 1;
             t
@@ -1093,12 +1091,8 @@ impl Parser {
             _ => return None,
         };
         if s == ">" {
-            let a = self.cur();
             if let Some(Tok::Sym(">")) = self.peek_at(1) {
-                let b = &self.toks[self.i + 1];
-                if a.end == b.start {
-                    return Some((">>", 8, 2));
-                }
+                return Some((">>", 8, 2));
             }
         }
         let p = match s {
