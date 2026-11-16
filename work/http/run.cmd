@@ -1,8 +1,4 @@
 @echo off
-rem Build and run the whole HTTP module suite. The vector tests are offline; the
-rem live ones dial the Python fixtures on loopback, which this script starts and
-rem stops around them. `run.cmd up` and `run.cmd down` start and stop just the
-rem fixtures, for driving a single test by hand.
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 if not exist build mkdir build

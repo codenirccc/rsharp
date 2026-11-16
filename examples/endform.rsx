@@ -1,6 +1,3 @@
-// The brace-less form. Every block can close with `end;` instead of `}`:
-// functions, if, else, while, loop, for and unsafe. Braces still work, and the
-// two forms mix — a brace-less statement is closed by exactly one `end;`.
 
 extern fn printf(fmt: ptr<u8>, ...) -> i32;
 
@@ -40,7 +37,6 @@ fn main() -> i32
 
     printf("grade = %lld\n", classify(sum));
 
-    // a brace-less raise inside a braced function body: the forms mix
     {
         let doubled: i64 = sum * 2;
         printf("doubled = %lld\n", doubled);

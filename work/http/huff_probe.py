@@ -13,5 +13,4 @@ for i in range(257):
     maxlen = max(maxlen, L[i])
 print('nodes', len(nodes), 'maxlen', maxlen)
 
-# also confirm no code is a prefix of another (should hold by construction)
 print('leaves', sum(1 for n in nodes if n[0] < 0 and n[1] < 0))

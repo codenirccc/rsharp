@@ -1,4 +1,3 @@
-// work/http/t_bn.rsx — bignum arithmetic and modexp against Python's pow().
 include "../../modules/http/rt.rsx";
 include "../../modules/http/bignum.rsx";
 
@@ -40,7 +39,6 @@ fn main() -> i32 {
     var m: Bn = zero(Bn);
     var r: Bn = zero(Bn);
 
-    // 2^10 mod 1000 = 24
     bn_set_u64(&mut a, 2);
     bn_set_u64(&mut b, 10);
     bn_set_u64(&mut m, 1000);
@@ -51,7 +49,6 @@ fn main() -> i32 {
         ok += 1;
     }
 
-    // 3^200 mod 1000000007 = 136318165
     bn_set_u64(&mut a, 3);
     bn_set_u64(&mut b, 200);
     bn_set_u64(&mut m, 1000000007);
@@ -62,7 +59,6 @@ fn main() -> i32 {
         ok += 1;
     }
 
-    // 12345 * 67890 = 838102050
     bn_set_u64(&mut a, 12345);
     bn_set_u64(&mut b, 67890);
     bn_mul(&mut r, &mut a, &mut b);
@@ -72,7 +68,6 @@ fn main() -> i32 {
         ok += 1;
     }
 
-    // (a + b) mod m sanity: 999999999 + 999999999 mod 1000000007 = 999999991
     bn_set_u64(&mut a, 999999999);
     bn_set_u64(&mut b, 999999999);
     bn_add(&mut r, &mut a, &mut b);
@@ -84,7 +79,6 @@ fn main() -> i32 {
         ok += 1;
     }
 
-    // A 2048-bit modulus with e = 65537 — the RSA public operation shape.
     var nn: Bn = zero(Bn);
     var bb: Bn = zero(Bn);
     var ee: Bn = zero(Bn);
@@ -106,7 +100,6 @@ fn main() -> i32 {
         printf("modexp_2048_65537 FAIL\n   got  %s\n   want %s\n", gotp, want);
     }
 
-    // Round-trip through big-endian bytes must preserve the value.
     var rt1: Bn = zero(Bn);
     var buf: [u8; 32] = [0];
     var bufp: ptr<u8> = null;

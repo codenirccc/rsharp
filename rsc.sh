@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# rsc.sh - the posix driver. Same contract as rsc.cmd: [-t target] <file.rsx> [out]
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -9,7 +8,6 @@ back="$here/backend/rscb"
 [ -x "$front" ] || front="$front.exe"
 [ -x "$back" ] || back="$back.exe"
 
-# No ELF writer, so every non-Windows host defaults to the Mach-O target.
 case "$(uname -s)" in
   MINGW* | MSYS* | CYGWIN*) host=windows ;;
   *) host=macos ;;

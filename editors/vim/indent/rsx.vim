@@ -1,4 +1,3 @@
-" indent/rsx.vim - braces do the work, cindent already knows how.
 
 if exists('b:did_indent')
   finish

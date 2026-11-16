@@ -20,9 +20,6 @@ port = int(sys.argv[2]) if len(sys.argv) > 2 else 4433
 ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
 ctx.minimum_version = ssl.TLSVersion.TLSv1_3
 ctx.maximum_version = ssl.TLSVersion.TLSv1_3
-# Python exposes no knob for the TLS 1.3 suite list; OpenSSL's default order is
-# AES-256, ChaCha20, AES-128, and the client offers only AES-128, so the
-# negotiation lands on 1301 without help.
 ctx.load_cert_chain(here / f'srv_{kind}_chain.pem', here / f'srv_{kind}_leaf_key.pem')
 ctx.set_alpn_protocols(['h2', 'http/1.1'])
 
@@ -40,7 +37,6 @@ def drain(conn):
             data = conn.recv(4096)
             if not data:
                 return
-            # Echo the bytes back, framed with a length the client can predict.
             conn.sendall(data)
     except (ssl.SSLError, OSError):
         pass

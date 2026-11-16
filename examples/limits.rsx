@@ -1,5 +1,3 @@
-// limits.rsx - an integer literal is checked against the type it lands in, so a
-// u16 is held to 65535 instead of being truncated to 4464 without a word.
 
 extern fn printf(fmt: ptr<u8>, ...) -> i32;
 

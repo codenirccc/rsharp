@@ -17,7 +17,7 @@ from hpack.huffman import HuffmanEncoder
 here = pathlib.Path(__file__).resolve().parent
 out = here / 'hpack_vec.rsx'
 
-cases = []       # (block_bytes, [(name, value), ...])
+cases = []
 
 REQ1 = [
     (b':method', b'GET'),

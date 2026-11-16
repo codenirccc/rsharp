@@ -90,7 +90,6 @@ def build(kind):
     (out / f'srv_{kind}_leaf_key.pem').write_bytes(leaf_key.private_bytes(
         serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
 
-    # Python's ssl module wants a single chain file with the leaf first.
     chain = leaf.public_bytes(serialization.Encoding.PEM) + ca.public_bytes(serialization.Encoding.PEM)
     (out / f'srv_{kind}_chain.pem').write_bytes(chain)
 

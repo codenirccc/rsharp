@@ -1,5 +1,3 @@
-// work/http/t_request.rsx — the high-level request API against the loopback
-// fixtures: one URL parser and one request object driving all three transports.
 include "../../modules/http/http_request.rsx";
 include "https_anchor.rsx";
 

@@ -1,11 +1,7 @@
-// literals.rsx - a bare integer literal takes the type of the other operand.
-// `n` is i64, so `48 + n` is an i64 sum; it used to default the 48 to i32 and
-// report a mismatch the writer never asked for.
 
 extern fn printf(fmt: ptr<u8>, ...) -> i32;
 
 fn digit(n: i64) -> u8
-    // the shape that used to need a temporary: literal first, typed value second
     let d = (48 + (n % 10)) as u8;
     return d;
 end;

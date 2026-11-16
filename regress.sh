@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# regress.sh - the posix twin of regress.cmd. Same examples, same order.
 set -uo pipefail
 
 cd "$(dirname "$0")"
@@ -14,8 +13,6 @@ fail=0
 for f in examples/*.rsx; do
   n="$(basename "$f" .rsx)"
 
-  # mach_absolute_time only resolves against a Mach-O image, so this one is
-  # built for macOS on every host and run only where that image can execute.
   if [ "$n" = bench_mac ]; then
     if ! bash ./rsc.sh -t macos "$f" "build/$n" >/dev/null 2>"build/$n.err"; then
       echo "FAIL-BUILD $n"

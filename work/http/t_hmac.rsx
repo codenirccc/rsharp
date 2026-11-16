@@ -1,4 +1,3 @@
-// work/http/t_hmac.rsx — HMAC-SHA256 (RFC 4231) and HKDF (RFC 5869 A.1).
 include "../../modules/http/rt.rsx";
 include "../../modules/http/sha256.rsx";
 include "../../modules/http/hmac.rsx";
@@ -22,15 +21,12 @@ fn main() -> i32 {
     var op: ptr<u8> = null;
     unsafe { op = &mut out[0] as ptr<u8>; }
 
-    // RFC 4231 case 1
     hmac_sha256("key", 3, "The quick brown fox jumps over the lazy dog", 43, op);
     ok += hx("hmac_case1", op, 32, "f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8");
 
-    // RFC 4231 case 2: key = "Jefe"
     hmac_sha256("Jefe", 4, "what do ya want for nothing?", 28, op);
     ok += hx("hmac_case2", op, 32, "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843");
 
-    // RFC 4231 case 3: 20 bytes of 0xaa, 50 bytes of 0xdd
     var k3: [u8; 20] = [0];
     var d3: [u8; 50] = [0];
     var i: i64 = 0;
@@ -52,7 +48,6 @@ fn main() -> i32 {
     hmac_sha256(k3p, 20, d3p, 50, op);
     ok += hx("hmac_case3", op, 32, "773ea91e36800e46854db8ebd09181a72959098b3ef8c122d9635514ced565fe");
 
-    // RFC 5869 A.1: IKM 22x0b, salt 000102...0c, info f0..f9
     var ikm: [u8; 22] = [0];
     i = 0;
     while (i < 22) {

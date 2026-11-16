@@ -1,5 +1,3 @@
-" Vim syntax file: R# (.rsx)
-" Kept deliberately plain so it loads the same in Vim 8 and Neovim.
 
 if exists('b:current_syntax')
   finish
@@ -7,7 +5,6 @@ endif
 
 syn case match
 
-" Strings and comments come first so keywords inside them stay plain.
 syn region rsxString start=+"+ skip=+\\\\\|\\"+ end=+"+ contains=rsxEscape
 syn match rsxEscape '\\\_.' contained
 syn region rsxComment start='/\*' end='\*/' contains=@Spell
@@ -17,10 +14,8 @@ syn match rsxNumber '\<0[xX][0-9a-fA-F_]\+\>'
 syn match rsxNumber '\<0[bB][01_]\+\>'
 syn match rsxNumber '\<\d[\d_]*\(\.\d[\d_]*\)\?\([eE][+-]\?\d\+\)\?\>'
 
-" A label is a quote, a name and a colon: 'outer: while (n > 0)
 syn match rsxLabel "'\h\w*\ze\s*:"
 
-" Defined before the keywords, so `if (` keeps the keyword colour.
 syn match rsxCall '\<[a-z_]\w*\ze\s*('
 
 syn keyword rsxKeyword let var return if else while loop for in break continue match unsafe as end

@@ -1,4 +1,3 @@
-// the longest Collatz chain below a thousand
 fn steps(n) {
   var x = n;
   var k = 0;

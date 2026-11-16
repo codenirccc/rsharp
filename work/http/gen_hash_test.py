@@ -57,8 +57,6 @@ for n, s1, s384, s512 in cases:
     a('    total += 1;')
     a('')
 
-# Streaming: feed one byte at a time through update and compare with the
-# one-shot hash of the same bytes.
 a('    // Streaming update in awkward chunks must match the one-shot result.')
 a('    i = 0;')
 a('    while (i < 300) {')

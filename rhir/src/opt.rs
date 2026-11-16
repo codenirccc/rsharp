@@ -276,7 +276,6 @@ pub fn simplify_cfg(f: &mut Func) -> bool {
     changed
 }
 
-// a folded branch leaves the other arm with a phi edge nobody takes any more
 fn drop_phi_incoming(f: &mut Func, block: usize, pred: usize) {
     if block >= f.blocks.len() {
         return;
@@ -317,7 +316,6 @@ fn remove_unreachable(f: &mut Func) -> bool {
         out.push(b);
     }
     f.blocks = out;
-    // phi incoming lists are block indices too: remap them, drop the removed ones
     for b in f.blocks.iter_mut() {
         for i in b.insts.iter_mut() {
             if let Inst::Phi { incoming, .. } = i {

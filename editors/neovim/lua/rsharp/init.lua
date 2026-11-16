@@ -6,7 +6,6 @@ M.opts = {
   mini = nil,
 }
 
--- .../editors/neovim/lua/rsharp/init.lua -> the repo root
 local function repo_root()
   local here = debug.getinfo(1, 'S').source:sub(2)
   return vim.fn.fnamemodify(here, ':h:h:h:h:h')
@@ -44,8 +43,6 @@ local function outpath(file)
   return out
 end
 
--- rsc:  C:\path\file.rsx: line 12:7: expected ';' ...
--- rscb: C:\path\file.rsx: fn main: type mismatch ...
 local function parse(lines)
   local items = {}
   for _, line in ipairs(lines) do
@@ -61,7 +58,6 @@ local function parse(lines)
     else
       local file2, lnum2, msg2 = line:match('^rsc: (.-): line (%d+): (.*)$')
       if file2 then
-        -- lexer errors: they fail before a token column exists
         items[#items + 1] = {
           filename = file2,
           lnum = tonumber(lnum2),

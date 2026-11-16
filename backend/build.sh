@@ -3,8 +3,6 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-# Windows needs the msys64 ucrt64 toolchain in front of PATH; Darwin and Linux
-# just use whatever ocamlopt the PATH already has.
 case "$(uname -s)" in
   MINGW* | MSYS* | CYGWIN*)
     ucrt=
@@ -45,8 +43,6 @@ OCAMLOPT=${OCAMLOPT:-ocamlopt}
 
 echo "==> compiling back end with $("$OCAMLOPT" -version 2>/dev/null || echo 'ocamlopt')"
 
-# Stale .cmi from a different compiler version is a confusing error far from
-# its cause, so each build starts clean. Fifteen modules, it costs a second.
 rm -f ./*.cmi ./*.cmx ./*.o
 
 "$OCAMLOPT" -I "$OCAMLLIB" -w +a-4-9-40-41-42-44-45-70 -o "rscb$EXE" \

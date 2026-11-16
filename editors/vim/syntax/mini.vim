@@ -1,4 +1,3 @@
-" Vim syntax file: Mini (.mini)
 
 if exists('b:current_syntax')
   finish

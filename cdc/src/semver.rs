@@ -92,7 +92,6 @@ impl Range {
             return Ok(Range { text, comps: Vec::new() });
         }
         let mut comps = Vec::new();
-        // ">= 1.2.3" is two words; glue the operator back onto its version
         let words: Vec<String> = text
             .split_whitespace()
             .map(|w| w.trim_matches(',').to_string())

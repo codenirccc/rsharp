@@ -1,4 +1,3 @@
-// work/http/t_roots.rsx — read the Windows root store and parse every entry.
 include "../../modules/http/roots_win.rsx";
 include "../../modules/http/trust.rsx";
 

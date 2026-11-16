@@ -1,7 +1,3 @@
-// work/http/t_sec.rsx — offline regressions for every guard the audit added.
-// Each one is a crafted input that used to slip through: request smuggling
-// shapes, header injection, malformed HPACK/H2 blocks, an ALPN downgrade and a
-// CN-only certificate presented under a SAN. No fixtures, no sockets.
 include "../../modules/http/http_request.rsx";
 
 struct Tally {
@@ -18,7 +14,6 @@ fn t_ok(t: &mut Tally, name: ptr<u8>, good: bool) {
     }
 }
 
-// ---- request surface: URL, method, header ----------------------------------
 
 fn url_case(t: &mut Tally, name: ptr<u8>, url: ptr<u8>, want: i32) {
     var q: HReq = hreq_new();
@@ -77,7 +72,6 @@ fn phase_request(t: &mut Tally) {
     hdr_case(t, "hdr empty name", "", "v", HR_ERR);
 }
 
-// ---- HTTP/1 head parsing and framing ---------------------------------------
 
 fn h1_case(t: &mut Tally, name: ptr<u8>, raw: ptr<u8>, want: i32, fr: i32, cl: i64) {
     var r: H1Resp = zero(H1Resp);
@@ -162,7 +156,6 @@ fn phase_h1(t: &mut Tally) {    h1_case(t, "h1 length", "HTTP/1.1 200 OK\r\nCont
     hxbuf_free(&mut b);
 }
 
-// ---- HPACK outbound guards -------------------------------------------------
 
 fn hp_case(t: &mut Tally, name: ptr<u8>, hn: ptr<u8>, hv: ptr<u8>, want: i32) {
     var o: HpOut = hp_out_new();
@@ -180,8 +173,6 @@ fn phase_hpack(t: &mut Tally) {
     hp_case(t, "hp ctl value", "x-test", "a\001b", HPACK_ERR);
     hp_case(t, "hp tab value", "x-test", "a\tb", HPACK_OK);
 
-    // hp_out_add takes explicit lengths, so an embedded NUL is expressible here
-    // even though the request API (NUL-terminated strings) can never produce it.
     var vb: [u8; 8] = [0];
     var vp: ptr<u8> = null;
     unsafe { vp = &mut vb[0] as ptr<u8>; }
@@ -194,7 +185,6 @@ fn phase_hpack(t: &mut Tally) {
     hp_out_free(&mut o);
 }
 
-// ---- HTTP/2 header block decoding ------------------------------------------
 
 fn h2_status(t: &mut Tally, name: ptr<u8>, st: ptr<u8>, want: i32, ws: i64) {
     var c: H2Conn = zero(H2Conn);
@@ -256,7 +246,6 @@ fn phase_h2(t: &mut Tally) {
     h2_status_twice(t);
 }
 
-// ---- TLS ALPN policy -------------------------------------------------------
 
 fn alpn_case(t: &mut Tally, name: ptr<u8>, mode: i32, proto: ptr<u8>, want: i32) {
     var x: Tls13 = zero(Tls13);
@@ -287,7 +276,6 @@ fn phase_alpn(t: &mut Tally) {
     alpn_case(t, "alpn h2 h1", 2, "http/1.1", 0);
 }
 
-// ---- X509 name matching ----------------------------------------------------
 
 fn cert_case(t: &mut Tally, name: ptr<u8>, hex: ptr<u8>, host: ptr<u8>, want: i32) {
     var buf: [u8; 2048] = [0];
@@ -308,9 +296,7 @@ fn cert_case(t: &mut Tally, name: ptr<u8>, hex: ptr<u8>, host: ptr<u8>, want: i3
 }
 
 fn phase_x509(t: &mut Tally) {
-    // CN=cnonly.test, SAN holds one URI and no DNS name: the CN must not answer.
     let cnonly: ptr<u8> = "308201413081e9a003020102020502540be40b300a06082a8648ce3d04030230163114301206035504030c0b636e6f6e6c792e74657374301e170d3234303130313030303030305a170d3334303130313030303030305a30163114301206035504030c0b636e6f6e6c792e746573743059301306072a8648ce3d020106082a8648ce3d030107034200049ad47d1c10c19e3f07cf03a8cca9cf67201cf21c169ba70dfac159f14d1d3bb63cb7b26f422a790bf9f5f40671b2a6629b06260413efdb1bc956c90ab68ae600a324302230200603551d1104193017861568747470733a2f2f636e6f6e6c792e746573742f78300a06082a8648ce3d04030203470030440220510a8532ae1c134073684ee295d51afa220535c5afe3ee58334180a9fc012a97022075371612358ae2a931c2687d5ee321fbba827ea3a5f7287d1e73ae514753bd28";
-    // CN=nosan.test with no SAN extension at all: the legacy CN path still works.
     let nosan: ptr<u8> = "3082011b3081c1a003020102020502540be40a300a06082a8648ce3d04030230153113301106035504030c0a6e6f73616e2e74657374301e170d3234303130313030303030305a170d3334303130313030303030305a30153113301106035504030c0a6e6f73616e2e746573743059301306072a8648ce3d020106082a8648ce3d030107034200048de42d5848f1ca12875a78421c013ef82111aaf811179097e8712a1e56abf40e07bd77ab4aabfb7b53616cde59bbe0766acd70e9247396c1fdcf083570774b58300a06082a8648ce3d0403020349003046022100dd255e0c9e70ee242cf03dfbacc5b6aa425f3bff6bbfc622ecc014815d155d76022100b349efef4601ca89b832257b05eacc96b6cfd2f2e091deb27e06598c2ee15cc2";
 
     cert_case(t, "san present beats cn", cnonly, "cnonly.test", 0);

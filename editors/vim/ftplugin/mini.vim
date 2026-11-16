@@ -1,4 +1,3 @@
-" ftplugin/mini.vim - Mini is built by mini/run.sh, not by rsc directly.
 
 if exists('b:did_ftplugin')
   finish

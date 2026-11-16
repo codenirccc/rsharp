@@ -307,7 +307,6 @@ fn cmd_add(args: &[String]) -> Result<u8, String> {
             Ok(0)
         }
         Err(e) => {
-            // the manifest is already on disk; put it back if the install never landed
             p.manifest = old;
             let _ = p.manifest.save(&p.dir.join(manifest::FILE));
             Err(e)
@@ -334,7 +333,6 @@ fn cmd_remove(args: &[String]) -> Result<u8, String> {
             Ok(0)
         }
         Err(e) => {
-            // the manifest is already on disk; put it back if the install never landed
             p.manifest = old;
             let _ = p.manifest.save(&p.dir.join(manifest::FILE));
             Err(e)

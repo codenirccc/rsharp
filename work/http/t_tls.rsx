@@ -1,7 +1,3 @@
-// TLS 1.3 handshake probe: connects to the local Python server, then does one
-// application-data round trip. A handshake that reports success but whose
-// records the peer cannot read is not a working handshake, so the echo is part
-// of the test rather than an afterthought.
 
 include "../../modules/http/rt.rsx";
 include "../../modules/http/transport_win.rsx";

@@ -1,21 +1,3 @@
-// pubnub.rsx — a PubNub client written in R#.
-//
-// There is no SDK download here and nothing to link but Windows itself. The
-// client is WinHTTP for the socket and the TLS, a byte buffer for the URL, and
-// a hand-rolled percent-encoder and JSON string writer, because R# has no
-// string values to concatenate. Publish, subscribe, history and time, over the
-// REST API at ps.pndsn.com.
-//
-// Build:
-//   rsc.cmd sdk\pubnub\pubnub.rsx
-// Run:
-//   set PUBNUB_PUBLISH_KEY=demo
-//   set PUBNUB_SUBSCRIBE_KEY=demo
-//   set PUBNUB_CHANNEL=rsharp
-//   sdk\pubnub\pubnub.exe
-//
-// Everything above `main` is the library. R# has no modules, so an app copies
-// this file in and keeps its own `main`; the demo below shows the calls.
 
 extern fn printf(fmt: ptr<u8>, ...) -> i32;
 
@@ -56,7 +38,6 @@ struct PubNub {
     uuid: ptr<u8>
 }
 
-// ── bytes ───────────────────────────────────────────────────────────────────
 
 fn hexd(v: u8) -> u8 {
     if (v < 10) {
@@ -112,7 +93,6 @@ fn num_into(dst: ptr<u8>, at: ptr<i64>, v: i64) {
     }
 }
 
-// RFC 3986 unreserved set stays literal, everything else becomes %XX.
 fn pct_into(dst: ptr<u8>, at: ptr<i64>, src: ptr<u8>) {
     unsafe {
         var i: i64 = 0;
@@ -147,7 +127,6 @@ fn pct_into(dst: ptr<u8>, at: ptr<i64>, src: ptr<u8>) {
     }
 }
 
-// A JSON string: quotes and backslashes escaped, controls as \u00XX.
 fn json_into(dst: ptr<u8>, at: ptr<i64>, src: ptr<u8>) {
     unsafe {
         dst[at[0]] = 34;
@@ -189,7 +168,6 @@ fn say(s: ptr<u8>) {
     printf("%s\n", s);
 }
 
-// Config from the environment, with the literal as the fallback.
 fn load_cfg(name: ptr<u8>, dst: ptr<u8>, fallback: ptr<u8>, cap: u32) {
     var n: u32 = 0;
     unsafe { n = GetEnvironmentVariableA(name, dst, cap); }
@@ -199,14 +177,11 @@ fn load_cfg(name: ptr<u8>, dst: ptr<u8>, fallback: ptr<u8>, cap: u32) {
     }
 }
 
-// ── transport ───────────────────────────────────────────────────────────────
 
 fn wcopy(dst: ptr<u16>, cap: i32, src: ptr<u8>) -> i32 {
     return MultiByteToWideChar(65001, 0, src, -1, dst, cap);
 }
 
-// One GET. Writes the NUL terminated body into `out` and returns the HTTP
-// status, or a negative number when a handle could not be opened.
 fn pn_get(path: ptr<u8>, out: ptr<u8>, cap: i64) -> i64 {
     var agent: [u16; 64] = [0];
     var host: [u16; 64] = [0];
@@ -298,9 +273,6 @@ fn pn_get(path: ptr<u8>, out: ptr<u8>, cap: i64) -> i64 {
     return code as i64;
 }
 
-// Pull the next timetoken out of a subscribe body. Two shapes answer: the v2
-// envelope carries {"t":{"t":"1699..."}}, the plain endpoint answers
-// [[...messages...],"1699..."]. Try the labelled one, then the trailing one.
 fn tt_into(body: ptr<u8>, dst: ptr<u8>) {
     unsafe {
         var i: i64 = 0;
@@ -347,7 +319,6 @@ fn tt_into(body: ptr<u8>, dst: ptr<u8>) {
     }
 }
 
-// ── the API ─────────────────────────────────────────────────────────────────
 
 fn pn_publish(p: &PubNub, msg: ptr<u8>, out: ptr<u8>, cap: i64) -> i64 {
     var path: [u8; PATHMAX] = [0];
@@ -430,11 +401,7 @@ fn pn_time(p: &PubNub, out: ptr<u8>, cap: i64) -> i64 {
     return st;
 }
 
-// ── demo ────────────────────────────────────────────────────────────────────
 
-// The demo is written in the brace-less form: a block is closed by `end;`
-// instead of `}`, one terminator per statement. Braces still work and the two
-// forms mix, so the library above keeps its own style.
 fn main() -> i32
     var pubkey: [u8; CFGMAX] = [0];
     var subkey: [u8; CFGMAX] = [0];
@@ -491,9 +458,6 @@ fn main() -> i32
         tt[1] = 0;
     end;
 
-    // A first subscribe with tt 0 returns immediately and hands back the
-    // server's current timetoken; every round after that publishes and then
-    // asks from that point forward, so the message is already waiting.
     unsafe
         st = pn_subscribe(&pn, ttp, bodyp, BODYMAX);
     end;

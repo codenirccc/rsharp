@@ -1,4 +1,3 @@
-// break and continue inside one loop
 fn main() {
   var i = 0;
   var hits = 0;

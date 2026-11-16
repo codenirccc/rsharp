@@ -9,8 +9,6 @@ permissions:
   contents: read
 
 jobs:
-  # The Mach-O encoder is x86-64, so the macOS job runs on Intel: that is the
-  # one runner where the images this repo writes can actually be executed.
   macos:
     name: macos x86_64 (builds and runs the Mach-O images)
     runs-on: macos-13
@@ -70,8 +68,6 @@ jobs:
       - name: regress
         run: ./regress.sh
 
-  # No ELF writer yet, so Linux builds the toolchain and emits a Mach-O to
-  # prove the driver is portable. Nothing here executes.
   linux:
     name: linux (build only)
     runs-on: ubuntu-latest

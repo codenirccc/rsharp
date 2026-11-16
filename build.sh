@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# build.sh - the posix entry point, mirror of build.cmd/build.ps1.
 set -euo pipefail
 
 cd "$(dirname "$0")"

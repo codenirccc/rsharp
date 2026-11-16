@@ -1,4 +1,3 @@
-// work/http/t_gcm.rsx — AES-128-GCM against NIST SP 800-38D test cases 1-4.
 include "../../modules/http/rt.rsx";
 include "../../modules/http/aes_gcm.rsx";
 
@@ -44,20 +43,17 @@ fn main() -> i32 {
 
     var ks: Aes128 = zero(Aes128);
 
-    // Case 1 — empty plaintext, empty AAD, zero key, zero nonce.
     rt_parse_hex("00000000000000000000000000000000", kp, 16);
     rt_parse_hex("000000000000000000000000", ip, 12);
     aes128_init(&mut ks, kp);
     aes128_gcm_seal(&ks, ip, ap, 0, pp, 0, cp, tp);
     ok += eqhex("gcm_case1_t", tp, 16, "58e2fccefa7e3061367f1d57a4e7455a");
 
-    // Case 2 — one zero block.
     rt_parse_hex("00000000000000000000000000000000", pp, 16);
     aes128_gcm_seal(&ks, ip, ap, 0, pp, 16, cp, tp);
     ok += eqhex("gcm_case2_c", cp, 16, "0388dace60b6a392f328c2b971b2fe78");
     ok += eqhex("gcm_case2_t", tp, 16, "ab6e47d42cec13bdf53a67b21257bddf");
 
-    // Case 3 — 64 bytes, no AAD.
     rt_parse_hex("feffe9928665731c6d6a8f9467308308", kp, 16);
     rt_parse_hex("cafebabefacedbaddecaf888", ip, 12);
     let n3: i64 = rt_parse_hex("d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b391aafd255", pp, 80);
@@ -66,7 +62,6 @@ fn main() -> i32 {
     ok += eqhex("gcm_case3_c", cp, n3, "42831ec2217774244b7221b784d0d49ce3aa212f2c02a4e035c17e2329aca12e21d514b25466931c7d8f6a5aac84aa051ba30b396a0aac973d58e091473f5985");
     ok += eqhex("gcm_case3_t", tp, 16, "4d5c2af327cd64a62cf35abd2ba6fab4");
 
-    // Opening that ciphertext must return the plaintext unchanged.
     let opn: i32 = aes128_gcm_open(&ks, ip, ap, 0, cp, n3, bk, tp);
     var same: i32 = 1;
     if (opn != 0) {
@@ -84,13 +79,11 @@ fn main() -> i32 {
     printf("gcm_roundtrip=%d\n", same);
     ok += same;
 
-    // Case 4 — 60 bytes (case 3 truncated by 4) plus 20 bytes of AAD.
     let na: i64 = rt_parse_hex("feedfacedeadbeeffeedfacedeadbeefabaddad2", ap, 32);
     aes128_gcm_seal(&ks, ip, ap, na, pp, 60, cp, tp);
     ok += eqhex("gcm_case4_c", cp, 60, "42831ec2217774244b7221b784d0d49ce3aa212f2c02a4e035c17e2329aca12e21d514b25466931c7d8f6a5aac84aa051ba30b396a0aac973d58e091");
     ok += eqhex("gcm_case4_t", tp, 16, "5bc94fbc3221a5db94fae95ae7121a47");
 
-    // A flipped tag byte must be rejected.
     var badtag: [u8; 16] = [0];
     var btp: ptr<u8> = null;
     unsafe {

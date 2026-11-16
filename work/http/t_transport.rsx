@@ -1,4 +1,3 @@
-// work/http/t_transport.rsx — transport smoke test against a local server.
 include "../../modules/http/rt.rsx";
 include "../../modules/http/transport_win.rsx";
 

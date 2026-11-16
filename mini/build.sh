@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# build.sh - glue the portable core to one host layer, then compile it.
 set -euo pipefail
 
 cd "$(dirname "$0")"

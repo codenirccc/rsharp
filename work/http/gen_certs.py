@@ -68,10 +68,7 @@ info = {
     'leaf_sig_hex': leaf.signature.hex(),
     'ca_tbs_hex': None,
 }
-# The signature covers the DER of the TBSCertificate, which is the first element
-# of the Certificate SEQUENCE: recompute it here so the test can compare lengths.
 raw = leaf.public_bytes(serialization.Encoding.DER)
-# tbs is [tag][len][content]; re-encode by finding the first nested SEQUENCE.
 def tlv_len(b, i):
     if b[i] < 128:
         return b[i], 1

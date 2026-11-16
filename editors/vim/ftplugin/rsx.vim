@@ -1,4 +1,3 @@
-" ftplugin/rsx.vim - buffers settings and the two commands.
 
 if exists('b:did_ftplugin')
   finish

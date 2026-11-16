@@ -243,7 +243,6 @@ fn lower_inst(
                         src: src(rhs),
                     });
                     if unsigned {
-                        // narrow values sit sign-extended in the register; unsigned div wants the raw bits
                         if let Some(t) = narrow {
                             ctx.push(MInst::Movzx {
                                 from: t,
@@ -282,7 +281,6 @@ fn lower_inst(
                         dst: d,
                         src: src(lhs),
                     });
-                    // a narrow value is stored sign-extended; a logical shift has to see the raw bits
                     if let (Some(t), BinOp::Shr) = (narrow, op) {
                         ctx.push(MInst::Movzx {
                             from: t,

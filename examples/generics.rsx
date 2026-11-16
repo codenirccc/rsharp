@@ -1,6 +1,3 @@
-// Zero-cost generics: every call site below is monomorphised at compile time.
-// No box, no vtable, no indirect call; `max<i32>` and `max<f64>` are two
-// ordinary functions in the image.
 
 extern fn printf(fmt: ptr<u8>, ...) -> i32;
 
@@ -18,13 +15,10 @@ fn min<T>(a: T, b: T) -> T {
     return b;
 }
 
-// Two parameters, so the copy is named after both: clamp$i32$i32.
 fn clamp<T>(x: T, lo: T, hi: T) -> T {
     return min(max(x, lo), hi);
 }
 
-// A generic that takes a reference and returns a reference: no copy of the
-// pointee, just a different static type on the same address.
 fn pick<T>(a: &T, b: &T, first: bool) -> &T {
     if (first) {
         return a;
@@ -32,8 +26,6 @@ fn pick<T>(a: &T, b: &T, first: bool) -> &T {
     return b;
 }
 
-// A generic over a tuple. The tuple is laid out inline in the frame; the
-// generic adds no indirection over the concrete version.
 fn swap<T, U>(p: (T, U)) -> (U, T) {
     return (p.1, p.0);
 }

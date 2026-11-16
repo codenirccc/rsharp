@@ -1,6 +1,3 @@
-" rsharp#… helpers shared by the ftplugins and commands.
-" Set g:rsharp_rsc / g:rsharp_mini to absolute paths if the drivers are not on
-" your PATH.
 
 function! rsharp#driver() abort
   if exists('g:rsharp_rsc') && !empty(g:rsharp_rsc)
@@ -24,7 +21,6 @@ function! rsharp#mini() abort
   return 'mini/run.sh'
 endfunction
 
-" Windows is the only place the driver appends .exe to the output name.
 function! rsharp#out(file) abort
   let out = fnamemodify(a:file, ':p:r')
   return has('win32') ? out . '.exe' : out

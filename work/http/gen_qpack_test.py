@@ -61,8 +61,6 @@ composites = [
 for hdrs in composites:
     vectors.append((ref_encode(hdrs), hdrs))
 
-# A capacity-0 field section prefix is always the two zero bytes; if that ever
-# drifts the vectors stop describing a client that never blocks.
 for block, _ in vectors:
     assert block[:2] == b'\x00\x00', f'unexpected prefix {block[:2].hex()}'
 

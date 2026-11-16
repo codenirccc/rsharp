@@ -1,4 +1,3 @@
-// work/http/t_sha.rsx — SHA-256 against the FIPS 180-4 / NIST vectors.
 include "../../modules/http/rt.rsx";
 include "../../modules/http/sha256.rsx";
 
@@ -32,7 +31,6 @@ fn main() -> i32 {
     ok += check("448bit", "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq", 56,
                 "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1");
 
-    // streaming in uneven pieces must equal the one-shot digest
     var c: Sha256 = zero(Sha256);
     sha256_init(&mut c);
     sha256_update(&mut c, "abc", 3);
@@ -61,7 +59,6 @@ fn main() -> i32 {
     printf("stream_split_equal=%d\n", s);
     ok += s;
 
-    // 1,000,000 'a' — the long vector, streamed in 1000-byte chunks
     var big: [u8; 1000] = [0];
     var i2: i64 = 0;
     while (i2 < 1000) {

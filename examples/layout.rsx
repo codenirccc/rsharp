@@ -1,9 +1,3 @@
-// Unboxed layout, proved with numbers.
-//
-// A struct is its fields, in order, with no header and no pointer. An array
-// of structs is one contiguous run of those bytes. A generic over the
-// element type is a copy of the loop with the element size baked in, so the
-// stride is a constant and nothing chases a pointer.
 
 extern fn printf(fmt: ptr<u8>, ...) -> i32;
 
@@ -18,9 +12,6 @@ struct Grid {
     tail: i32
 }
 
-// Every instance gets its own body with a known element type and a known
-// width. No Box, no trait object, no dynamic call: `total$i32` and
-// `total$f64` are separate direct functions.
 fn total<T>(xs: &[T; 4]) -> T {
     var s: T = xs[0];
     var i: i64 = 1;
@@ -42,8 +33,6 @@ fn main() -> i32 {
         Vec2 { x: 3.0, y: 2.5 },
         Vec2 { x: 4.0, y: 3.5 }
     ];
-    // The address difference between neighbours is the whole element, so the
-    // elements are inline and adjacent, not pointers to somewhere else.
     var step: u64 = 0;
     unsafe {
         let p: ptr<Vec2> = &v[1] as ptr<Vec2>;

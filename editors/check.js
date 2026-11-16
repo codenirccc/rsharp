@@ -1,5 +1,3 @@
-// Checks the editor files: valid JSON, every regex compiles, every referenced
-// path exists. Run with: node editors/check.js
 const fs = require('fs');
 const path = require('path');
 
@@ -57,7 +55,6 @@ function walk(value, file, keyPath) {
           }
         }
       } else if (typeof v === 'string' && (k === 'scopeName' || k === 'language')) {
-        // no-op, kept so the walker sees them
       } else {
         walk(v, file, `${keyPath}.${k}`);
       }

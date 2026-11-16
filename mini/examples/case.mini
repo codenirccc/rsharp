@@ -1,4 +1,3 @@
-// case — one value, many arms, an optional else
 fn label(n) {
   var out = 0;
   case (n) {

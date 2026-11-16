@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# all.sh - the posix twin of all.cmd. rhir only writes PE images, so the
-# runtime half of the roundtrip needs Windows or wine; everywhere else the
-# text roundtrip still runs, it just cannot press the button.
 set -uo pipefail
 
 cd "$(dirname "$0")"
