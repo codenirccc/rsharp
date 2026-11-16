@@ -6,6 +6,7 @@ type var_info = {
   vty : typ;
   vdepth : int;
   mutable vinit : bool;
+  mutable vborrowed : int;
 }
 
 type bctx = {
@@ -32,7 +33,8 @@ let pop ctx =
 
 let declare ctx name ty init =
   match ctx.scopes with
-  | s :: _ -> Hashtbl.replace s name { vty = ty; vdepth = ctx.depth; vinit = init }
+  | s :: _ -> Hashtbl.replace s name { vty = ty; vdepth = ctx.depth; vinit = init; vborrowed = 0 }
+  | [] -> ()
   | [] -> ()
 
 let find ctx name =
@@ -47,6 +49,13 @@ let rec holds_ref = function
   | TPtr t | TBox t -> holds_ref t
   | TArray (t, _) -> holds_ref t
   | TTuple ts -> List.exists holds_ref ts
+  | _ -> false
+
+let rec holds_borrow = function
+  | TRef _ | TBox _ | TStruct _ | TEnum _ -> true
+  | TPtr _ -> false
+  | TArray (t, _) -> holds_borrow t
+  | TTuple ts -> List.exists holds_borrow ts
   | _ -> false
 
 let is_agg = function
@@ -93,6 +102,10 @@ let max_borrow_depth ctx (e : expr) : int =
   let rec go acc (e : expr) =
     let acc =
       match e.node with
+      | EVar n -> (
+          match find ctx n with
+          | Some v when holds_borrow v.vty -> max acc v.vborrowed
+          | _ -> acc)
       | EAddr a | EAddrMut a -> (
           match base_var a with
           | Some n -> ( match find ctx n with Some v -> max acc v.vdepth | None -> acc)
@@ -181,6 +194,16 @@ let rec walk_stmt ctx (s : stmt) =
       in
       depth_for_binding ctx ty name init;
       declare ctx name ty (init <> None || is_agg ty);
+      if holds_borrow ty then begin
+        let b =
+          match init with
+          | Some e -> max_borrow_depth ctx e
+          | None -> 0
+        in
+        (match find ctx name with
+         | Some v -> v.vborrowed <- b
+         | None -> ())
+      end;
       if holds_ref ty then begin
         let d = ctx.depth in
         List.iter (fun (n, k) -> ctx.scope_borrows <- (n, k, d) :: ctx.scope_borrows)
@@ -188,14 +211,20 @@ let rec walk_stmt ctx (s : stmt) =
       end;
       ctx.stmt_borrows <- []
   | SAssign (_, lhs, rhs) -> (
-      match lhs.node with
-      | EVar n -> root_assign ctx n
-      | _ -> walk_expr ctx lhs);
+      match base_var lhs with
+      | Some root -> root_assign ctx root
+      | None -> walk_expr ctx lhs);
       walk_expr ctx rhs;
-      if holds_ref lhs.ty then begin
+      if holds_borrow lhs.ty then begin
         let need = max_borrow_depth ctx rhs in
         if need > ctx.depth then
-          note ctx "assigning a reference to something in a deeper scope; it would dangle"
+          note ctx "assigning a reference to something in a deeper scope; it would dangle";
+        (match base_var lhs with
+         | Some root -> (
+             match find ctx root with
+             | Some v -> v.vborrowed <- need
+             | None -> ())
+         | None -> ())
       end;
       ctx.stmt_borrows <- []
   | SExpr e ->
@@ -266,11 +295,8 @@ let rec walk_stmt ctx (s : stmt) =
   | SReturn (Some e) -> (
       walk_expr ctx e;
       ctx.stmt_borrows <- [];
-      match e.node with
-      | EVar _ -> ()
-      | _ ->
-          if max_borrow_depth ctx e > 0 then
-            note ctx "returning a reference to a local; the local is gone before the caller looks")
+      if max_borrow_depth ctx e > 0 then
+        note ctx "returning a reference to a local; the local is gone before the caller looks")
 
 let check_program (p : program) : string list =
   let ctx =
@@ -293,7 +319,7 @@ let check_program (p : program) : string list =
       ctx.stmt_borrows <- [];
       ctx.scope_borrows <- [];
       let top = Hashtbl.create 8 in
-      List.iter (fun (n, t) -> Hashtbl.replace top n { vty = t; vdepth = 0; vinit = true })
+      List.iter (fun (n, t) -> Hashtbl.replace top n { vty = t; vdepth = 0; vinit = true; vborrowed = 0 })
         f.fparams;
       ctx.scopes <- [ top ];
       push ctx;
