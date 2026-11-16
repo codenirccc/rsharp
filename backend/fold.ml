@@ -141,6 +141,7 @@ let rec fold_expr (e : expr) : unit =
   | EUn ("-", { node = EFloat f; _ }) -> e.node <- EFloat (-.f)
   | EUn ("~", a) -> ( match eval_int a with Some n -> e.node <- EInt (Int64.lognot n) | None -> ())
   | EUn ("!", a) -> ( match eval_bool a with Some b -> e.node <- EBool (not b) | None -> ())
+  | ECast (a, t) -> ( match a.ty with t' when t' = t -> e.node <- a.node | _ -> ())
   | EBin (op, a, b) -> fold_bin e op a b
   | _ -> ()
 

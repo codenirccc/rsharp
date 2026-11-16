@@ -335,7 +335,7 @@ let rec infer ctx ?expect (e : expr) : expr =
         if t = TVoid then note ctx "cannot cast to void";
         if is_array t || is_array a.ty then
           note ctx "cannot cast %s to %s" (to_string a.ty) (to_string t)
-        else if (match (a.ty, t) with TStruct _, _ | _, TStruct _ -> true | _ -> false) then
+        else if (match (a.ty, t) with TStruct s1, TStruct s2 -> s1 <> s2 | TStruct _, _ | _, TStruct _ -> true | _ -> false) then
           note ctx "cannot cast between struct types (%s as %s)" (to_string a.ty)
             (to_string t);
         if is_pointer t && is_ref a.ty then

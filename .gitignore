@@ -18,6 +18,8 @@ backend/rscb.exe
 /work/rand/build/
 /work/gui/paint.bmp
 *.rsi
+work/http/*.pid
+work/threads/build/
 work/http/certs/*_key.pem
 work/http/certs/*.pid
 work/http/certs/live.json
