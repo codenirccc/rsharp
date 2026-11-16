@@ -1491,6 +1491,37 @@ cross-builds the macOS demo and checks the Mach-O image. A run ends with
 libobjc and CoreGraphics; it has not been executed on a Mac from this host, only
 checked structurally.
 
+## The math module
+
+`modules/math.rsx` is a floating point and integer math library in plain R# —
+no externs, no imports, everything computed from the sign of the bits: sqrt is
+a Newton iteration with a fixed 40 steps, sine and cosine are Taylor series
+over a range-reduced argument (accurate for |x| up to ~2^52; the reduction
+costs bits past that, the classic limit without a split pi/2), tan is the
+ratio. Integer side: `isqrt` by Newton, `ipow` by squaring.
+
+```rsx
+include "modules/math.rsx";
+
+let r = fsqrt(12345.6789);
+let s = fsin(1.0);
+let f = ffloor(2.7);
+let t = ftan(0.5);
+let n = isqrt(12345678);
+```
+
+Surface: `PI`, `fsqrt`, `fsin`, `fcos`, `ftan`, `ffloor`, `fceil`, `ftrunc`,
+`fround` (half away from zero), `fmod`, `fpow_i` (integer exponent, negative
+is the reciprocal), `isqrt`, `ipow`, `fabs`, `fmin`, `fmax`. `fsqrt` of a
+negative number is a `-1.0` sentinel, not a trap.
+
+`work\math\run.cmd` builds and runs the suite against reference values from an
+independent implementation: sqrt, sin/cos/tan across quadrants including the
+large-argument case (`sin(100)`), floor/ceil/trunc/round on both sides of
+zero, `fmod` with mixed signs, `fpow_i` including negative exponents, `isqrt`
+around perfect squares, `ipow` for exact integers. A run ends with
+`math suite: ok`.
+
 ## The random module
 
 `modules/rand.rsx` is a PRNG in plain R#: xoshiro256** over a four-word

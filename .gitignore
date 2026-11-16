@@ -20,6 +20,7 @@ backend/rscb.exe
 *.rsi
 work/http/*.pid
 work/threads/build/
+work/math/build/
 work/http/certs/*_key.pem
 work/http/certs/*.pid
 work/http/certs/live.json
