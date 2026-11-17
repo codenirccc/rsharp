@@ -833,6 +833,15 @@ instead of `GetTickCount64`, because the Windows import is a build error against
 this target. Both regression drivers build it with `-t macos` on every host —
 `regress.cmd` reports it as a built image, `regress.sh` runs it on macOS.
 
+The s2s transpiler is split the same way mini is:
+`mini/s2s_core.rsx` carries the parser and emitter, `mini/s2s.rsx` is the
+Windows host (Win32 pipes), `mini/s2s_mac.rsx` is the macOS host (libSystem
+read/write). The mac image cross-builds and passes the structural check here
+the same way `bench_mac` does; it has not executed on a Mac in this tree.
+`work\linalg\run.cmd` does the same structural check for the linalg test.
+The GPU layer is Windows-only (`tags_mac` has no OpenGL/Vulkan entries —
+see The GPU library).
+
 ## rhir — the second toolchain
 
 `rhir/` is a compiler in Rust that shares no code with the OCaml back end. It
@@ -1633,6 +1642,35 @@ large-argument case (`sin(100)`), floor/ceil/trunc/round on both sides of
 zero, `fmod` with mixed signs, `fpow_i` including negative exponents, `isqrt`
 around perfect squares, `ipow` for exact integers. A run ends with
 `math suite: ok`.
+
+## The linalg module
+
+`modules/linalg.rsx` is a small dense linear algebra library in plain R#.
+No externs, no dependencies; deterministic `f64` arithmetic throughout.
+
+- `Mat2`/`Mat3` structs — row-major fields `a..d` and `m00..m22`.
+- `mat2_det`, `mat2_mul`, `mat2_vec`, `mat2_inv` (adjugate/det),
+  `mat2_solve` (Cramer's rule).
+- `mat3_det`, `mat3_mul`, `mat3_vec`, `mat3_inv` (adjugate/det),
+  `mat3_solve` (Cramer's rule), `mat3_identity`.
+
+```rsx
+include "modules/linalg.rsx";
+
+var a: Mat3 = Mat3 { m00: 1.0, m01: 2.0, m02: 3.0,
+                     m10: 0.0, m11: 1.0, m12: 4.0,
+                     m20: 5.0, m21: 6.0, m22: 0.0 };
+let inv: Mat3 = mat3_inv(&a);
+let p: Mat3 = mat3_mul(&a, &inv);
+```
+
+`work\linalg\t_linalg.rsx` is the byte-compared test — every output line is
+checked against numpy's `float64` results at %.6f precision (41 lines:
+dets, products, mat-vec products, inverse components, Cramer's solves,
+`A * A^-1` reconstructions). `work\linalg\run.cmd` builds it and
+byte-compares against `linalg.out`, then builds a macOS image and checks it
+structurally (Mach-O x86-64; not executed on this host). A run ends with
+`linalg suite: ok`.
 
 ## The random module
 
