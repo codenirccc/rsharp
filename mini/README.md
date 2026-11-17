@@ -125,8 +125,70 @@ primary  := number | string | name
   `break` and `continue` inside an arm act on the nearest enclosing loop.
 - `val => { ... }` — every arm body is a block; there is no fallthrough.
 
-Limits, all enforced with the same diagnostic shape (`mini: line N: <msg>`
-followed by the source line and a caret under the column):
+## The s2s path — char and bool
+
+`mini/s2s.rsx` is a source-to-source transpiler for the same language. It
+reads Mini on stdin and writes R# source on stdout, so the pipeline is
+`mini --[s2s.exe]--> .rsx --[rsc.exe]--> .exe`. Everything plain Mini can
+compile works unchanged through it: `s2s.exe < prog.mini > prog.rsx` then
+`rsc.cmd prog.rsx prog.exe` produces a native image whose behaviour matches
+the plain AOT run byte for byte (see `work\s2s\run.cmd`, which runs every
+`mini\examples\*.mini` through the transpiler and byte-compares against the
+same `.out` files).
+
+The point of the transpiler is the syntax plain Mini does not have:
+
+```
+'a'  '\n'  '\t'  '\r'  '\\'  '\''  '\"'  '\0'  '\x41'
+true  false
+```
+
+Char literals are the byte value as an i64, so `'a' + 1` is `98`, `print('A')`
+prints `65`, and comparisons on chars are ordinary integer comparisons. Bool
+literals keep their names; conditions accept them directly.
+
+Under the hood the semantics are still Mini's i64-only world. `var ok = true;`
+stores `1`, `print(true)` prints `1`, `!` on an i64 is `x == 0`. The one thing
+the back end actually cares about is that `if` and `while` conditions are
+`bool`, so the transpiler emits real `bool` throughout R# source: comparisons
+and `&&`/`||`/`!`/`true`/`false` bind as `bool`, and any int-typed condition
+is wrapped in `(cond) != 0`. `char`/`bool` therefore work everywhere plain
+Mini works — in loops, in `case` subjects and arms, in `return`, in
+`print` arguments — without adding a second type to the compiler itself.
+
+```
+fn main() {
+  var c = 'a';
+  print(c);          // 97
+  print(c + 1);      // 98
+  print('A' < 'Z');  // 1
+  var ok = true;
+  if (ok) {
+    print(1);        // 1
+  }
+  if (false) {
+    print(2);
+  } else {
+    print(3);        // 3
+  }
+  return 0;
+}
+```
+
+`work\s2s\charbool.mini` is the byte-compared example for this path — `run.cmd`
+ends with `s2s suite: ok`. Plain `mini\test.cmd` covers the untranslated
+language exactly as it always has.
+
+On macOS there is no script twin; the same two commands work once the front
+and back end are built: `mini/s2s.rsx` builds with `./rsc.sh` like any other
+R# program, then `rsc.sh prog.rsx prog` links the image. The transpiler has
+only been executed on this Windows host.
+
+## Diagnostics and limits
+
+Mini reports syntax errors as `mini: line N: <msg>` followed by the source
+line and a caret under the column. The transpiler reports as
+`s2s: line N: <msg>` on stderr and exits 1.
 
 | limit | value |
 | --- | --- |
@@ -136,8 +198,9 @@ followed by the source line and a caret under the column):
 | functions | 4,096 (`FNMAX`) |
 | lookahead | one token (saved and restored lexer state) |
 
-A file that hits one of these errors out with a line number instead of
-truncating silently.
+The transpiler is smaller: 1 MB of source in, 1 MB of R# source out, and
+512 tracked functions. A program that hits one of these limits errors out
+with a line number instead of truncating silently.
 
 ## How it is put together
 

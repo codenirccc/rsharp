@@ -1,0 +1,31 @@
+fn main() {
+  var c = 'a';
+  print(c);
+  print(c + 1);
+  print('A' < 'Z');
+  print('a' == 'a');
+  print('b' > 'a');
+  var ok = true;
+  var bad = false;
+  if (ok) {
+    print(1);
+  }
+  if (bad) {
+    print(2);
+  } else {
+    print(3);
+  }
+  print(ok || bad);
+  print(ok && bad);
+  print(!ok);
+  var sum = 0;
+  var i = 0;
+  while (i < 3) {
+    sum = sum + c;
+    i = i + 1;
+  }
+  print(sum);
+  print(len("hello"));
+  puts("done");
+  return 0;
+}

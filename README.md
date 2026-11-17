@@ -1056,6 +1056,16 @@ Mini is i64-only: functions, `let`/`var`, `if`/`else`, `while`, `break`,
 type means no inference, which is what keeps the whole thing in one portable
 file. Diagnostics carry a line number, the source line, and a caret.
 
+`mini/s2s.rsx` is a source-to-source transpiler that lowers Mini to R#
+source: `s2s.exe < prog.mini > prog.rsx` then `rsc.cmd prog.rsx prog.exe`.
+Plain Mini programs go through it byte-identically (`work\s2s\run.cmd`, which
+also pins plain examples against the same `.out` files). The transpiler is
+where the language gains what plain Mini does not have: char literals
+(`'a'`, `'\x41'`, `'\n'`) and `true`/`false`. The back end's bool-in-condition
+rule is the whole point — conditions emit real R# `bool` instead of i64-typed
+comparisons, and every int-typed condition is wrapped in `!= 0`. A dedicated
+byte-compared example lives in `work\s2s\charbool.mini`.
+
 The interesting part is the shape: one token of lookahead over the source
 buffer (no token array), expressions as a 65,536-node index pool rewound at
 the start of every statement, IR emitted straight into a 32 MB flat buffer.
@@ -1063,8 +1073,8 @@ There is no AST on disk and no allocator in the compiler — a 1 MB source
 buffer, a 3.5 MB node pool and the output buffer are grabbed once at startup
 and that is all the memory it uses.
 
-See `mini/README.md` for the grammar, the host split, the limits and the
-measurements.
+See `mini/README.md` for the grammar, the host split, the limits, the
+s2s path and the measurements.
 
 ## CDC
 

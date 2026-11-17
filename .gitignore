@@ -22,6 +22,7 @@ work/http/*.pid
 work/threads/build/
 work/math/build/
 work/game/build/
+work/s2s/build/
 work/http/certs/*_key.pem
 work/http/certs/*.pid
 work/http/certs/live.json
