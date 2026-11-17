@@ -1554,6 +1554,55 @@ across a re-seed; then the physics scenarios — circle-circle impact, a ball
 falling and settling on a static AABB, AABB vs AABB with restitution, and
 broad-phase overlap results. A run ends with `game suite: ok`.
 
+## The GPU library
+
+`modules/gpu/` is the graphics layer — real GL 3.3 core and real Vulkan 1.4
+on the same machine, both exercised by the suite. Plain R#, no externals
+beyond the Win32/GDI/OGL import set the rest of the tree already uses (two
+new tags: `opengl32` and `vulkan`, mapped to `opengl32.dll` and
+`vulkan-1.dll`; the back end's import table is the only thing touched).
+
+- `gl.rsx` — creates a hidden Win32 window, picks a pixel format through the
+  legacy WGL path, upgrades to a GL 3.3 core context via
+  `wglGetProcAddress("wglCreateContextAttribsARB")`, then builds an FBO with a
+  RGBA8 render texture. Compiles/links a minimal 330-core shader pair,
+  renders a red triangle, reads the center pixel back and checks it. Every
+  entry point beyond GL 1.1 is resolved at runtime through
+  `wglGetProcAddress`; the GL 1.1 functions come in statically through the
+  `opengl32` tag. Pixel-level verification, not just exit codes: the suite
+  reads the center texel and asserts red.
+- `vk.rsx` — full instance → physical device → logical device lifecycle.
+  `VK_API_VERSION_1_4` instance, enumerates every physical device, prints the
+  api/driver/vendor/device/deviceType/name table, enumerates queue families
+  (flags, counts, timestamp bits), picks the first graphics-capable family,
+  creates a logical device with one queue at full priority, verifies
+  `vkDeviceWaitIdle == VK_SUCCESS`, then tears the device and instance down.
+- `gpu.rsx` — the umbrella; pulls in both.
+
+```rsx
+include "modules/gpu/gpu.rsx";
+
+var g: GLx = glx_create(256, 256);
+glViewport(0, 0, g.w, g.h);
+glx_fbo_init(&mut g);
+```
+
+`work\gpu\run.cmd` builds and runs both suites: `t_gl` creates the hidden
+window, renders the triangle into the FBO, and checks the center pixel is
+red — `opengl suite: ok`; `t_vk` runs the logical-device lifecycle against
+the first physical device — `vulkan suite: ok`. The driver string, device
+name and api version printed by the Vulkan suite come from this machine's
+NVIDIA driver (1.4.351, GeForce RTX 3050); the checks are exit-code-based,
+not string-compared. `gpu suite: ok` when both pass. No GPU rendering output
+is byte-compared to a golden — the OpenGL check uses exact pixel values
+because FBO rendering is deterministic on a fixed driver; the Vulkan suite
+verifies the lifecycle, not device identity.
+
+macOS: the back end's `tags_mac` has no `opengl32`/`vulkan` mappings yet —
+the GL path through `./rsc.sh` would need Cocoa + GL headers or a direct
+libgl link, and Vulkan through MoltenVK would need new `.dylib` entries in
+`tags_mac`. Windows-only in this release.
+
 ## The math module
 
 `modules/math.rsx` is a floating point and integer math library in plain R# —

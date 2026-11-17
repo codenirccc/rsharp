@@ -51,6 +51,8 @@ let tags_win =
     ("crypt32", "crypt32.dll");
     ("ntdll", "ntdll.dll");
     ("gdi32", "gdi32.dll");
+    ("opengl32", "opengl32.dll");
+    ("vulkan", "vulkan-1.dll");
   ]
 
 let tags_mac =
