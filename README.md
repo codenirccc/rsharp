@@ -1496,7 +1496,7 @@ checked structurally.
 `modules/game/` is the game-facing layer of the library tree, same deal as
 the others: plain R#, no externs beyond the math module's, no build step,
 include the umbrella. `game.rsx` pulls in the math and random modules plus
-four layers of its own.
+five layers of its own.
 
 - `vec.rsx` — 2D/3D vector ops: dot, cross, length, distance, normalized
   components, `v2_lerp`, `v3_cross_*`, `angle_wrap` to [-PI, PI].
@@ -1512,6 +1512,11 @@ four layers of its own.
   avalanche, then `stream(master, tag)` seeds an `Rng` with it. World-gen can
   take 1, combat takes 2, particles take 3 — same master seed, same runs,
   same everything, every time.
+- `physics.rsx` — semi-implicit Euler integration (`phy_integrate_*`),
+  broad-phase overlap tests for circles and AABBs, impulse resolution with
+  restitution, positional correction proportional to inverse mass, and a
+  sleep epsilon for resting contacts. `Circle` and `AABB` are plain structs —
+  one `inv_m = 0` side makes a static floor/wall.
 
 ```rsx
 include "modules/game/game.rsx";
@@ -1519,14 +1524,25 @@ include "modules/game/game.rsx";
 var s: Rng = stream(1234, 1);
 let h: f64 = noise2(x, y);
 let p: (f64, f64) = v2_lerp(0.0, 0.0, 640.0, 360.0, ease_quad_inout(t));
+
+var ball: Circle = Circle { x: 0.0, y: 10.0, r: 0.5, vx: 0.0, vy: 0.0, inv_m: 1.0, rest: 0.5 };
+var floor: AABB = AABB { x: 0.0, y: 0.0, hw: 5.0, hh: 0.25, vx: 0.0, vy: 0.0, inv_m: 0.0, rest: 0.5 };
+var i: i64 = 0;
+while (i < 600) {
+    phy_integrate_circle(&mut ball, 0.0 - 9.8, 0.016);
+    phy_resolve_circle_aabb(&mut ball, &mut floor);
+    i += 1;
+}
 ```
 
-`work\game\run.cmd` builds and runs the suite against reference values from
+`work\game\run.cmd` builds and runs both suites against reference values from
 an independent implementation: vector lengths and dots, the lattice-noise
 values at five coordinates including the negative quadrant, fbm at two, every
 easing curve against `math.sin`-computed reference outputs, both
-`stream_seed` values, and PRNG determinism/divergence across two streams and
-across a re-seed. A run ends with `game suite: ok`.
+`stream_seed` values, PRNG determinism/divergence across two streams and
+across a re-seed; then the physics scenarios — circle-circle impact, a ball
+falling and settling on a static AABB, AABB vs AABB with restitution, and
+broad-phase overlap results. A run ends with `game suite: ok`.
 
 ## The math module
 

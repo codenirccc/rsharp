@@ -4,3 +4,4 @@ include "vec.rsx";
 include "noise.rsx";
 include "easing.rsx";
 include "stream.rsx";
+include "physics.rsx";
