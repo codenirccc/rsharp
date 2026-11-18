@@ -11,5 +11,11 @@ if errorlevel 1 exit /b 1
 "%OUT%\t_lex.exe"
 if errorlevel 1 exit /b 1
 
+call "%HERE%..\rsc.cmd" "%HERE%t_parse.rsx" "%OUT%\t_parse.exe"
+if errorlevel 1 exit /b 1
+
+"%OUT%\t_parse.exe"
+if errorlevel 1 exit /b 1
+
 echo rscx: ok
 exit /b 0
