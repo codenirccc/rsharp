@@ -94,6 +94,70 @@ The build host and the target are independent. A Windows host builds macOS
 images fine — nothing in `macho.ml` asks the host anything, and `main.ml` picks
 the host's format only when `-t` is absent.
 
+## Install
+
+`basicr` is the one-step installer. It builds the toolchain if it is not built,
+copies `rsc`, `rscb`, `cdc` and `mini` under a prefix, writes a `rsc` driver
+next to them, puts that driver directory on `PATH`, then compiles and runs a
+hello program through the installed copy to prove the install works.
+
+On Windows:
+
+```
+basicr\basicr.cmd
+```
+
+On macOS and Linux:
+
+```
+./basicr/basicr.sh
+```
+
+`basicr.cmd` is the entry point for the same reason `build.cmd` is: PowerShell
+will not execute a script under a path containing `[`, so the `.cmd` wrapper
+hands the arguments to the scriptblock itself. Anywhere else, `basicr.ps1` is
+directly runnable.
+
+The prefix defaults to `%LOCALAPPDATA%\rsharp` on Windows,
+`~/Library/Application Support/rsharp` on macOS, and
+`${XDG_DATA_HOME:-$HOME/.local/share}/rsharp` on Linux. `--prefix` and
+`RSC_PREFIX` override it. Inside the prefix:
+
+```
+toolchain\    rsc, rscb, cdc, mini — the built binaries
+bin\          rsc.cmd + rscb.cmd, cdc.cmd, mini.cmd for Windows
+              rsc, rscb, cdc, mini for macOS and Linux
+env.cmd       set "PATH=%~dp0bin;%PATH%"
+env.sh        the same for a posix shell
+LICENSE
+```
+
+Windows adds the `bin` directory to the user `Path` through
+`[Environment]::SetEnvironmentVariable`, so it survives a reboot and shows up
+in a new shell. macOS and Linux append one line, `. "<prefix>/env.sh"`, to
+`~/.profile` and to `~/.bashrc` or `~/.zshrc` depending on `$SHELL`; the line is
+matched exactly, so running `install` twice leaves one copy.
+
+Commands:
+
+```
+basicr install     the default; add --no-build to use an existing build,
+                   --no-check to skip the hello run, --skip-path to leave
+                   PATH and the shell profiles alone
+basicr check       recompile and run the hello program through bin\rsc
+basicr env         print the line that puts bin on PATH for this shell
+basicr uninstall   unwire PATH and remove the prefix
+basicr help
+```
+
+`check` compiles `hello.rsx` and runs it. On Windows and on Intel macOS that is
+the whole test. On Linux and on Apple Silicon the toolchain can only write a
+PE32+ or an x86-64 Mach-O, so `check` builds the image and verifies its header
+instead of executing it.
+
+`uninstall` refuses `""`, `/` and `$HOME` as a prefix, so a mistyped
+`--prefix` cannot walk the home directory.
+
 ## Use
 
 ```
