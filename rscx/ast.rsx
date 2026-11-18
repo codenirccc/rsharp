@@ -106,7 +106,8 @@ struct Nd {
     f: f64,
     l: i64,
     l2: i64,
-    l3: i64
+    l3: i64,
+    ty: i64
 }
 
 struct Na {

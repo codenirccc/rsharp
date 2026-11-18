@@ -6,6 +6,24 @@ extern fn strlen(s: ptr<u8>) -> u64;
 extern fn sprintf(dst: ptr<u8>, fmt: ptr<u8>, ...) -> i32;
 extern "msvcrt" fn strtod(s: ptr<u8>, end: ptr<u8>) -> f64;
 
+fn p_off(p: ptr<u8>, i: i64) -> ptr<u8> {
+    var q: ptr<u8> = null;
+    unsafe { q = p + i; }
+    return q;
+}
+
+fn p_u8(v: &mut u8) -> ptr<u8> {
+    var q: ptr<u8> = null;
+    unsafe { q = v as ptr<u8>; }
+    return q;
+}
+
+fn p_u32(v: &mut u32) -> ptr<u32> {
+    var q: ptr<u32> = null;
+    unsafe { q = v as ptr<u32>; }
+    return q;
+}
+
 struct Sb {
     p: ptr<u8>,
     n: i64,
@@ -959,6 +977,26 @@ fn sp_eqc(s: &mut Sp, id: i64, c: ptr<u8>) -> bool {
     return true;
 }
 
+fn c_eq(a: ptr<u8>, b: ptr<u8>) -> bool {
+    var i: i64 = 0;
+    while (true) {
+        var ca: u8 = 0;
+        var cb: u8 = 0;
+        unsafe {
+            ca = a[i];
+            cb = b[i];
+        }
+        if (ca != cb) {
+            return false;
+        }
+        if (ca == 0) {
+            return true;
+        }
+        i += 1;
+    }
+    return false;
+}
+
 struct Lst {
     p: ptr<i64>,
     n: i64,
@@ -1097,6 +1135,7 @@ fn lp_set(l: &mut Lp, id: i64, i: i64, v: i64) {
 
 struct SetI {
     t: ptr<i64>,
+    th: ptr<i64>,
     cap: i64,
     n: i64,
     bad: i32
@@ -1106,13 +1145,15 @@ fn si_new() -> SetI {
     var s: SetI = zero(SetI);
     s.cap = 64;
     s.t = malloc((s.cap as u64) * sizeof(i64)) as ptr<i64>;
-    if (s.t == null) {
+    s.th = malloc((s.cap as u64) * sizeof(i64)) as ptr<i64>;
+    if (s.t == null || s.th == null) {
         s.bad = 1;
         return s;
     }
     var i: i64 = 0;
     while (i < s.cap) {
         unsafe { s.t[i] = 0; }
+        unsafe { s.th[i] = 0; }
         i += 1;
     }
     return s;
@@ -1122,6 +1163,10 @@ fn si_free(s: &mut SetI) {
     if (s.t != null) {
         free(s.t as ptr<u8>);
         s.t = null;
+    }
+    if (s.th != null) {
+        free(s.th as ptr<u8>);
+        s.th = null;
     }
     s.cap = 0;
     s.n = 0;
@@ -1133,7 +1178,7 @@ fn si_hash(sp: &mut Sp, id: i64) -> i64 {
     return sp_hash(p, n);
 }
 
-fn si_add(s: &mut SetI, sp: &mut Sp, id: i64) {
+fn si_add_h(s: &mut SetI, h: i64, id: i64) {
     if (s.bad == 1 || id <= 0) {
         return;
     }
@@ -1141,22 +1186,27 @@ fn si_add(s: &mut SetI, sp: &mut Sp, id: i64) {
         let oc: i64 = s.cap;
         let nc: i64 = oc * 2;
         var nt: ptr<i64> = malloc((nc as u64) * sizeof(i64)) as ptr<i64>;
-        if (nt == null) {
+        var nh: ptr<i64> = malloc((nc as u64) * sizeof(i64)) as ptr<i64>;
+        if (nt == null || nh == null) {
             s.bad = 1;
             return;
         }
         var i: i64 = 0;
         while (i < nc) {
             unsafe { nt[i] = 0; }
+            unsafe { nh[i] = 0; }
             i += 1;
         }
         var k: i64 = 0;
         while (k < oc) {
             var cur: i64 = 0;
-            unsafe { cur = s.t[k]; }
+            var ch: i64 = 0;
+            unsafe {
+                cur = s.t[k];
+                ch = s.th[k];
+            }
             if (cur != 0) {
-                let h: i64 = si_hash(sp, cur);
-                var at: i64 = h & (nc - 1);
+                var at: i64 = ch & (nc - 1);
                 while (true) {
                     var c2: i64 = 0;
                     unsafe { c2 = nt[at]; }
@@ -1165,36 +1215,45 @@ fn si_add(s: &mut SetI, sp: &mut Sp, id: i64) {
                     }
                     at = (at + 1) & (nc - 1);
                 }
-                unsafe { nt[at] = cur; }
+                unsafe {
+                    nt[at] = cur;
+                    nh[at] = ch;
+                }
             }
             k += 1;
         }
         free(s.t as ptr<u8>);
+        free(s.th as ptr<u8>);
         s.t = nt;
+        s.th = nh;
         s.cap = nc;
     }
-    let h: i64 = si_hash(sp, id);
-    var at: i64 = h & (s.cap - 1);
+    var at2: i64 = h & (s.cap - 1);
     while (true) {
-        var cur: i64 = 0;
-        unsafe { cur = s.t[at]; }
-        if (cur == 0) {
-            unsafe { s.t[at] = id; }
+        var cur2: i64 = 0;
+        unsafe { cur2 = s.t[at2]; }
+        if (cur2 == 0) {
+            unsafe { s.t[at2] = id; }
+            unsafe { s.th[at2] = h; }
             s.n += 1;
             return;
         }
-        if (cur == id) {
+        if (cur2 == id) {
             return;
         }
-        at = (at + 1) & (s.cap - 1);
+        at2 = (at2 + 1) & (s.cap - 1);
     }
 }
 
-fn si_has(s: &mut SetI, sp: &mut Sp, id: i64) -> bool {
+fn si_add(s: &mut SetI, sp: &mut Sp, id: i64) {
+    let h: i64 = si_hash(sp, id);
+    si_add_h(s, h, id);
+}
+
+fn si_has_h(s: &mut SetI, h: i64, id: i64) -> bool {
     if (s.bad == 1 || id <= 0) {
         return false;
     }
-    let h: i64 = si_hash(sp, id);
     var at: i64 = h & (s.cap - 1);
     while (true) {
         var cur: i64 = 0;
@@ -1207,4 +1266,9 @@ fn si_has(s: &mut SetI, sp: &mut Sp, id: i64) -> bool {
         }
         at = (at + 1) & (s.cap - 1);
     }
+}
+
+fn si_has(s: &mut SetI, sp: &mut Sp, id: i64) -> bool {
+    let h: i64 = si_hash(sp, id);
+    return si_has_h(s, h, id);
 }
