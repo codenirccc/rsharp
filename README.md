@@ -69,7 +69,7 @@ On macOS and Linux the same three steps are one script:
 It picks up whatever `ocamlopt` is on `PATH` — Homebrew, MacPorts or opam all
 work — and writes `backend/rscb` without the `.exe`. `build.sh` is a plain
 bash script, so a fresh checkout may need `chmod +x build.sh rsc.sh regress.sh
-backend/build.sh mini/*.sh rhir/all.sh` once.
+backend/build.sh basicr/basicr.sh mini/*.sh rhir/all.sh` once.
 
 `make` is the same three steps plus mini, behind the usual targets, on macOS
 and Linux:
