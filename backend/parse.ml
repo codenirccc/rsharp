@@ -68,6 +68,8 @@ let rec typ_of (env : env) (s : Sexp.t) : typ =
       TTuple (List.map (typ_of env) items)
   | Sexp.List [ Sexp.Atom "fnty"; Sexp.List ps; ret ] ->
       TFn (List.map (typ_of env) ps, typ_of env ret)
+  | Sexp.List [ Sexp.Atom "fntyc"; Sexp.List ps; ret ] ->
+      TFnC (List.map (typ_of env) ps, typ_of env ret)
   | Sexp.List [ Sexp.Atom "task"; inner ] -> TTask (typ_of env inner)
   | Sexp.List [ Sexp.Atom "var"; Sexp.Atom v ] -> TVar v
   | Sexp.Atom a -> fail "bad scalar type '%s' in IR" a

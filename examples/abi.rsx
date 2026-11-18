@@ -29,6 +29,14 @@ fn chain(n: i64, a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64, h: i64)
     return chain(n - 1, a + 1, b + 2, c + 3, d + 4, e + 5, f + 6, g + 7, h + 8);
 }
 
+fn bigframe(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64, h: i64, i: i64) -> i64 {
+    var pad: [u8; 5000] = [0];
+    pad[0] = 1;
+    pad[4999] = 2;
+    return a + b * 2 + c * 3 + d * 4 + e * 5 + f * 6 + g * 7 + h * 8 + i * 9
+        + (pad[0] as i64) + (pad[4999] as i64);
+}
+
 fn main() -> i32 {
     printf("sum9 = %lld\n", sum9(1, 2, 3, 4, 5, 6, 7, 8, 9));
     printf("fsum10 = %f\n", fsum10(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0));
@@ -38,5 +46,6 @@ fn main() -> i32 {
     printf("wide = %lld %lld %lld\n", w.a, w.b, w.c);
 
     printf("chain = %lld\n", chain(4, 1, 2, 3, 4, 5, 6, 7, 8));
+    printf("bigframe = %lld\n", bigframe(1, 2, 3, 4, 5, 6, 7, 8, 9));
     return 0;
 }

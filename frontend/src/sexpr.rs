@@ -98,6 +98,18 @@ fn type_w(t: &Type, s: &mut String) {
             type_w(ret, s);
             s.push(')');
         }
+        Type::FnC(params, ret) => {
+            s.push_str("(fntyc (");
+            for (i, p) in params.iter().enumerate() {
+                if i > 0 {
+                    s.push(' ');
+                }
+                type_w(p, s);
+            }
+            s.push_str(") ");
+            type_w(ret, s);
+            s.push(')');
+        }
         Type::Task(inner) => {
             s.push_str("(task ");
             type_w(inner, s);

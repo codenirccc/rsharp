@@ -30,7 +30,7 @@ let rec size_of info t =
   | TI8 | TU8 | TBool -> 1
   | TI16 | TU16 -> 2
   | TI32 | TU32 | TF32 -> 4
-  | TI64 | TU64 | TF64 | TPtr _ | TRef _ | TBox _ | TFn _ | TTask _ -> 8
+  | TI64 | TU64 | TF64 | TPtr _ | TRef _ | TBox _ | TFn _ | TFnC _ | TTask _ -> 8
   | TArray (e, n) -> size_of info e * n
   | TStruct s -> (layout_of info s).lsize
   | TEnum s -> (enum_layout_of info s).esize
@@ -873,6 +873,11 @@ and call g name args ret_ty =
       X.load64 g.x X.rax X.rbp off;
       X.store64 g.x X.rax X.rbp slot;
       emit_call g args ret_ty false false (`Slot slot)
+  | Some (off, TFnC _) ->
+      let slot = scratch g 8 in
+      X.load64 g.x X.rax X.rbp off;
+      X.store64 g.x X.rax X.rbp slot;
+      emit_call g args ret_ty false true (`Slot slot)
   | _ ->
       let variadic =
         match Hashtbl.find_opt g.info.funcs name with Some (_, _, v) -> v | None -> false
@@ -884,7 +889,7 @@ and callv g f args ret_ty =
   let slot = scratch g 8 in
   scalar g f;
   X.store64 g.x X.rax X.rbp slot;
-  emit_call g args ret_ty false false (`Slot slot)
+  emit_call g args ret_ty false (is_c_fn f.ty) (`Slot slot)
 
 and emit_call g args ret_ty variadic use_c tail =
   let sret = is_agg ret_ty in
@@ -1408,11 +1413,10 @@ let open_fn g ~name ~ret =
   X.jmp g.x;
   let skip_lbl = new_lbl g in
   X.mov_rr64 g.x X.rax X.rbp;
-  X.lea g.x X.r11 X.rsp 0;
   place g skip_lbl;
   X.lea g.x X.rax X.rax (-4096);
   X.touch_rax g.x;
-  X.cmp_rr g.x X.rax X.r11;
+  X.cmp_rr g.x X.rax X.rsp;
   jcc_to g 7 skip_lbl;
   (sub_at, probe_rel, X.pos g.x)
 

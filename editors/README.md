@@ -7,7 +7,7 @@ Nothing here re-implements the compiler; it teaches the editor to read.
 | --- | --- | --- |
 | VS Code | `editors/vscode/` | syntax, snippets, problem matchers |
 | Vim 8 | `editors/vim/` | filetype, syntax, indent, `:compiler`, two commands |
-| Neovim | `editors/neovim/` | the Vim files plus Lua commands and a quickfix build |
+| Neovim | `editors/neovim/` | the Vim files plus Lua commands, a quickfix build and a lazy.nvim spec |
 
 The repo itself carries `.vscode/tasks.json`, so building and running from a
 fresh clone works with no extension installed at all.
@@ -82,28 +82,63 @@ include line opens the right file, and `:setlocal define` lets `[i` find
 
 ## Neovim
 
-lazy.nvim:
+lazy.nvim. `editors/neovim/lazy.lua` is a ready spec — copy it into your
+`lua/plugins/` and edit the one path at the top:
 
 ```lua
-{
-  dir = '~/rsharp/editors/neovim',
-  ft = { 'rsx', 'mini' },
-  config = function()
-    vim.opt.rtp:append('~/rsharp/editors/vim') -- syntax, ftplugin, indent
-    require('rsharp').setup({ rsc = '~/rsharp/rsc.sh' })
-  end,
+local root = vim.fn.expand('~/rsharp')
+
+return {
+  {
+    dir = root .. '/editors/neovim',
+    ft = { 'rsx', 'mini' },
+    init = function()
+      vim.filetype.add({ extension = { rsx = 'rsx', mini = 'mini' } })
+      vim.opt.runtimepath:append(root .. '/editors/vim')
+    end,
+    config = function()
+      require('rsharp').setup()
+    end,
+  },
 }
 ```
 
-`setup()` with no arguments finds the driver next to the repo, so the explicit
-path is only needed when the repo is somewhere unexpected.
+The `init` half is not decoration. `ft` only fires once something has already
+decided a buffer is `.rsx`, and the plugin is not on `runtimepath` until it
+loads, so `ftdetect/` cannot help on its own — `vim.filetype.add` in `init` is
+what breaks the circle. `runtimepath` gets `editors/vim` in the same place
+because syntax and ftplugin are read at the `FileType` event, which has already
+happened by the time `config` runs.
+
+Without a plugin manager, put both directories on `runtimepath` in `init.lua`,
+`editors/neovim` first:
+
+```lua
+vim.opt.runtimepath:append('~/rsharp/editors/neovim')
+vim.opt.runtimepath:append('~/rsharp/editors/vim')
+require('rsharp').setup()
+```
+
+`editors/neovim/ftdetect/rsx.vim` covers that path: `filetype on` sources it and
+`.rsx`/`.mini` land on the right filetype with no Lua involved.
 
 ```
 :RsharpBuild     " compile the current .rsx, errors into the quickfix list
 :RsharpRun       " compile, then run it in a terminal split
-:RsharpTest      " run regress.sh (every example, then the Mini suite)
+:RsharpTest      " regress.sh, or regress.cmd on Windows
 :MiniRun         " compile and run the current .mini through mini/run.sh
 ```
+
+`setup()` takes `{ rsc = ..., mini = ..., test = ... }`; each one overrides the
+driver that would otherwise be found by walking up from the plugin directory.
+With no arguments it finds `rsc.sh`/`rsc.cmd`, `mini/run.sh`/`mini/run.cmd` and
+`regress.sh`/`regress.cmd` next to the repo, so the overrides are only for a
+checkout somewhere unexpected.
+
+`.cmd` drivers on Windows go through the shell, quoted per argument, because
+`cmd.exe` re-parses its own command line and mangles a bare argument list as
+soon as a path contains a space. `rsc.sh` and the compiled `.exe` are spawned
+directly.
 
 `:RsharpBuild` fills the quickfix list directly, so `:copen` and `:cnext` work
 without an `errorformat`; the Vim files still set one for `:make` users.

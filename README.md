@@ -139,7 +139,7 @@ print, `rsc: <file>: line <n>:<col>: <msg>`, `rsc: <file>: line <n>: <msg>` and
 | --- | --- |
 | VS Code | open `editors/vscode/` and press `F5`, or package it into a `.vsix` |
 | Vim 8 | `ln -s "$PWD/editors/vim" ~/.vim/pack/rsharp/start/rsharp` |
-| Neovim | `{ dir = '.../editors/neovim', ft = { 'rsx', 'mini' } }` |
+| Neovim | lazy.nvim: copy `editors/neovim/lazy.lua`; otherwise add `editors/neovim` and `editors/vim` to `runtimepath` |
 
 The repo also ships `.vscode/tasks.json`, so `Ctrl+Shift+B` builds the focused
 file with the problem matcher already wired up — no extension required. Vim and
@@ -161,7 +161,8 @@ ptr<T>                  raw pointer, unchecked, needs unsafe to touch
 Box<T>                  owned heap allocation, freed at scope exit
 [T; N]                  array of N, N is a literal or an integer const
 (T1, T2, ...)           tuple, two or more elements
-fn(T1, T2) -> T         function pointer, one word
+fn(T1, T2) -> T         R# ABI function pointer, one word
+extern fn(T1, T2) -> T  platform C ABI function pointer, one word
 Task<T>                 handle to a suspended computation, one word
 Vec2                    any capitalised name that is a declared struct
 T                       a type parameter, only inside the fn that declares it
@@ -169,6 +170,14 @@ T                       a type parameter, only inside the fn that declares it
 
 References, boxes, function pointers and tasks are as wide as a pointer and
 compile to one. There is no refcount, no GC, no tag, no hidden word.
+
+A plain `fn` pointer is the R# ABI, so it is the type a lambda or a GUI callback
+already has. `extern fn` is the same word with the platform ABI attached, and it
+is what an address from outside the program needs: a managed delegate, an entry
+point out of `wglGetProcAddress`, a `dlsym` result. The two are distinct types
+and nothing converts between them, because what happens after the indirect jump
+is not the same. The cast attaches the convention and checks nothing about the
+address; calling through one is an ordinary call.
 
 ### Declarations
 
@@ -383,6 +392,19 @@ capitalisation — `GetTickCount64` is spelled the way kernel32 exports it, and
 function is visible to every other. `main` takes no parameters, returns `i32`,
 and is called by a startup stub the back end emits before handing the return
 value to `ExitProcess` on Windows or to the `exit` syscall on macOS.
+
+A definition can opt into the platform C ABI with `extern "C" fn`, and an
+address that arrives at runtime can be typed `extern fn(...)`. That is the
+whole edge story: `wglGetProcAddress` hands back GL entry points that are C
+functions, `hostfxr` hands back managed delegates compiled to C, and calling
+either through an R#-ABI pointer would put the fourth integer argument in
+`R11` where Win64 reads `R9`.
+
+A pointer stored in a struct is called with the same dotted form as a method —
+`ops.add(2, 3)`, `s.hook(x, y)`. A dotted call resolves against the method table
+first and falls back to a field only when no method of that name exists, so the
+two never compete for a name: declare `fn add` and `add` means the method, leave
+it out and `add` means the stored pointer.
 
 Arrays do not decay on their own. A function that wants a buffer takes a
 reference to the whole array, or a raw pointer and you pass `&buf[0] as ptr<i32>`
@@ -722,6 +744,11 @@ must be called the way the outside world calls them, so the marker exists and
 the six OS callbacks in the tree carry it: `gui_win.rsx` and `gl.rsx`
 (`gui_win_proc`, `gw_proc`), `gui_mac.rsx` (the `gm_imp_*` AppKit selectors) and
 `work/threads/mt.rsx` (`mt_worker`).
+
+`extern fn(...)` in a type is the pointer side of the same marker: one word of
+address, and a call through it marshals with the platform ABI instead of the R#
+one. It carries no symbol and adds no import — it is a convention attached to a
+value the program already has.
 
 Windows, Microsoft calling convention (`extern "C"` on Windows, and every
 `extern "..."` import): integer and pointer arguments go in
@@ -1633,6 +1660,101 @@ macOS: the back end's `tags_mac` has no `opengl32`/`vulkan` mappings yet —
 the GL path through `./rsc.sh` would need Cocoa + GL headers or a direct
 libgl link, and Vulkan through MoltenVK would need new `.dylib` entries in
 `tags_mac`. Windows-only in this release.
+
+## The .NET host
+
+`modules/dotnet/dotnet.rsx` loads a managed assembly into the running process
+through `hostfxr` and hands back entry points that R# can call. Plain R# with
+the kernel32 imports the rest of the tree already uses: no C shim, no build
+step, nothing new in the back end.
+
+```rsx
+include "modules/dotnet/dotnet.rsx";
+
+var host: ClrHost = clr_host_open("fixture/bin/Release/net10.0/fixture.runtimeconfig.json" as ptr<u8>);
+if (!clr_host_ready(&host)) {
+    return 1;
+}
+let add_p: ptr<u8> = clr_host_find(&host,
+    "fixture/bin/Release/net10.0/fixture.dll" as ptr<u8>,
+    "rsharp_dotnet_fixture.Fixture, fixture" as ptr<u8>,
+    "Add" as ptr<u8>,
+    "rsharp_dotnet_fixture.AddDelegate, fixture" as ptr<u8>);
+var add: extern fn(i32, i32) -> i32 = add_p as extern fn(i32, i32) -> i32;
+add(6, 7);      13
+clr_host_close(&mut host);
+```
+
+`clr_host_open` looks for `hostfxr.dll` in `DOTNET_ROOT` first, then
+`C:\Program Files\dotnet`, `C:\Program Files (x86)\dotnet`, then
+`%ProgramFiles%\dotnet`. Under each root it walks `host\fxr\*` and keeps the
+highest version, compared as four numeric parts — `8.0.31` beats `8.0.14` where
+a string compare would not. This machine has `10.0.7`, `8.0.31` and `8.0.14`
+installed, and `10.0.7` is what the suite loads.
+
+The runtime config path goes in as UTF-8 and is widened to UTF-16 on the way to
+`hostfxr_initialize_for_runtime_config`. From the resulting context,
+`hostfxr_get_runtime_delegate` is asked for
+`hdt_load_assembly_and_get_function_pointer` (kind 5), and that function pointer
+resolves each method.
+
+A method reached this way has to be named as a delegate.
+`clr_host_find` takes the delegate's assembly-qualified name and passes it to
+the host, so the managed side needs a declared delegate per signature:
+
+```csharp
+[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+public delegate int AddDelegate(int a, int b);
+```
+
+Passing `null` for the delegate name uses `UNMANAGEDCALLERSONLY_METHOD` (`-1`)
+instead, which only resolves methods the host can call without a marshalling
+stub, so the managed method needs `[UnmanagedCallersOnly]`. The suite resolves
+nine entry points: six through delegates, and `Twice` through the stub-free
+path. `Pack` takes six `int`s and `Blend` alternates `double` and `int`, which
+between them cover the Win64 register cut-over and the shared argument slots.
+
+Both type names carry the assembly qualifier — `rsharp_dotnet_fixture.Fixture,
+fixture`, not `rsharp_dotnet_fixture.Fixture`. The short form fails with
+`0x80131522` (`COR_E_TYPELOAD`). A failed resolve prints the method name and the
+rc, and returns `null`; `0x80008093` out of `clr_host_open` is the host saying
+the runtime config path does not exist.
+
+Strings cross in buffers the caller owns. `clr_utf8_to_utf16` and
+`clr_utf16_to_utf8` take a capacity in code units that includes the trailing
+NUL, NUL-terminate, return the number written, and return `-1` rather than run
+past the end. Malformed UTF-8 returns `-2` rather than a replacement character:
+overlong encodings, surrogates, code points past `0x10FFFF`, bad lead bytes,
+bad continuation bytes and truncation all report the same way. Surrogate pairs
+are handled in both directions. `clr_str_put` assembles the search paths under
+the same bound, so a long `DOTNET_ROOT` produces a miss and not a write past the
+buffer.
+
+`work\dotnet\run.cmd` builds the fixture with `dotnet build -c Release`, copies
+`fixture.runtimeconfig.json` next to the assembly (the SDK does not emit it for
+a library), then compiles and runs two suites with `rsc.cmd`.
+
+`t_clrhost.rsx` resolves all nine entry points and checks `Add(6, 7) = 13`,
+`Mul(6, 7) = 42`, `SumTo(100) = 5050`, `Echo64` against its argument xored with
+`0x0F0F0F0F0F0F0F0F`, `Scale(1.5, 4.0) = 6.0`, `Twice(21) = 42`,
+`Pack(1..6) = 123456` and `Blend(1.5, 2, 2.5, 3, 3.5) = 31.5`. `Fill` writes 18
+UTF-16 units of `Hello from .NET 世界` through a raw pointer and reports 18; the
+same buffer decoded back to UTF-8 is 22 bytes and compares equal. The bridge is
+then checked at its edges: an exact-fit buffer terminating on the last unit,
+overflow leaving the buffer untouched and returning `-1`, a zero capacity,
+`clr_str_put` on a full buffer, and four malformed inputs built byte by byte at
+runtime — a lone continuation byte, a lone lead byte, an overlong `C0 AF`, and a
+truncated four-byte sequence — each returning `-2`. Then `dotnet suite: ok`.
+
+`t_fnptr.rsx` holds the resolved pointer in every place a function pointer can
+live: a struct field called straight through, a parameter, a return value, a
+`&Ops` field, and a plain R# ABI `fn` field, so the method-call fallback and the
+C ABI call path are both exercised against a live host. Then `fnptr suite: ok`.
+
+`clr_host_close` calls `hostfxr_close` and then `FreeLibrary`, and clears the
+three fields, so a closed host reports not ready. Windows-only: the module looks
+for `hostfxr.dll` and the search list is Win32 paths. On macOS the same sequence
+would need `libhostfxr.dylib` and a `/usr/local/share/dotnet` root.
 
 ## The math module
 

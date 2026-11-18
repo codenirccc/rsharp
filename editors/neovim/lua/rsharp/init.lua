@@ -4,6 +4,7 @@ local M = {}
 M.opts = {
   rsc = nil,
   mini = nil,
+  test = nil,
 }
 
 local function repo_root()
@@ -35,12 +36,30 @@ local function mini_driver()
   return first_executable(repo_root(), { 'mini/run.sh', 'mini/run.cmd' })
 end
 
+local function test_driver()
+  if M.opts.test then
+    return vim.fn.expand(M.opts.test)
+  end
+  return first_executable(repo_root(), { 'regress.sh', 'regress.cmd' })
+end
+
 local function outpath(file)
   local out = vim.fn.fnamemodify(file, ':p:r')
   if vim.fn.has('win32') == 1 then
     out = out .. '.exe'
   end
   return out
+end
+
+local function spawn(args)
+  if vim.fn.has('win32') == 1 and args[1]:lower():sub(-4) == '.cmd' then
+    local parts = {}
+    for i = 1, #args do
+      parts[i] = vim.fn.shellescape(args[i])
+    end
+    return table.concat(parts, ' ')
+  end
+  return args
 end
 
 local function parse(lines)
@@ -77,6 +96,10 @@ local function parse(lines)
 end
 
 local function build(file)
+  if file == '' then
+    vim.notify('rsharp: buffer has no file name', vim.log.levels.ERROR)
+    return false
+  end
   local drv = driver()
   if not drv then
     vim.notify('rsharp: no rsc driver; pass one to setup({ rsc = ... })', vim.log.levels.ERROR)
@@ -84,7 +107,7 @@ local function build(file)
   end
 
   local out = outpath(file)
-  local result = vim.fn.system({ drv, file, out })
+  local result = vim.fn.system(spawn({ drv, file, out }))
   local items = parse(vim.split(result, '\n', { plain = true }))
   vim.fn.setqflist(items, 'r')
 
@@ -103,8 +126,8 @@ local function run(file)
   if not build(file) then
     return
   end
-  vim.cmd('botright split')
-  vim.fn.termopen({ outpath(file) }, { cwd = vim.fn.fnamemodify(file, ':h') })
+  vim.cmd('botright new')
+  vim.fn.termopen(spawn({ outpath(file) }), { cwd = vim.fn.fnamemodify(file, ':h') })
   vim.cmd('startinsert')
 end
 
@@ -131,8 +154,13 @@ function M.setup(opts)
   end, { desc = 'compile and run the current .rsx' })
 
   vim.api.nvim_create_user_command('RsharpTest', function()
-    vim.cmd('botright split')
-    vim.fn.termopen({ vim.fn.fnamemodify(repo_root() .. '/regress.sh', ':p') })
+    local drv = test_driver()
+    if not drv then
+      vim.notify('rsharp: no regress.sh; pass one to setup({ test = ... })', vim.log.levels.ERROR)
+      return
+    end
+    vim.cmd('botright new')
+    vim.fn.termopen(spawn({ drv }), { cwd = repo_root() })
     vim.cmd('startinsert')
   end, { desc = 'run the example suite' })
 
@@ -142,8 +170,13 @@ function M.setup(opts)
       vim.notify('rsharp: no mini/run.sh; pass one to setup({ mini = ... })', vim.log.levels.ERROR)
       return
     end
-    vim.cmd('botright split')
-    vim.fn.termopen({ drv, vim.api.nvim_buf_get_name(0) })
+    local file = vim.api.nvim_buf_get_name(0)
+    if file == '' then
+      vim.notify('rsharp: buffer has no file name', vim.log.levels.ERROR)
+      return
+    end
+    vim.cmd('botright new')
+    vim.fn.termopen(spawn({ drv, file }), { cwd = vim.fn.fnamemodify(file, ':h') })
     vim.cmd('startinsert')
   end, { desc = 'compile and run the current .mini' })
 end

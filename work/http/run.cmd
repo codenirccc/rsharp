@@ -44,6 +44,7 @@ if errorlevel 1 (
 exit /b 0
 
 :fixtures_up
+call :fixtures_down
 start /b python server.py 8099 > build\fx_http.log 2>&1
 start /b python https_server.py rsa 4433 > build\fx_https_rsa.log 2>&1
 start /b python https_server.py ec 4434 > build\fx_https_ec.log 2>&1
@@ -55,7 +56,15 @@ ping -n 4 127.0.0.1 >nul
 exit /b 0
 
 :fixtures_down
-for %%p in (http_8099 srv_rsa_4433 srv_ec_4434 srv_rsa_4443 srv_ec_4444 proxy_8888 h3_4445) do (
+for %%p in (srv_rsa_4433 srv_ec_4434 srv_rsa_4443 srv_ec_4444 h3_4445) do (
+  if exist "certs\%%p.pid" (
+    set "FPID="
+    set /p FPID=<"certs\%%p.pid"
+    if not "!FPID!"=="" taskkill /f /pid !FPID! >nul 2>&1
+    del /q "certs\%%p.pid" >nul 2>&1
+  )
+)
+for %%p in (http_8099 proxy_8888) do (
   if exist "%%p.pid" (
     set "FPID="
     set /p FPID=<"%%p.pid"

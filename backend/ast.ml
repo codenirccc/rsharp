@@ -19,6 +19,7 @@ type typ =
   | TEnum of string
   | TTuple of typ list
   | TFn of typ list * typ
+  | TFnC of typ list * typ
   | TTask of typ
   | TVar of string
   | TInfer
@@ -47,6 +48,8 @@ let rec to_string = function
   | TTuple ts -> "(" ^ String.concat ", " (List.map to_string ts) ^ ")"
   | TFn (ps, r) ->
       "fn(" ^ String.concat ", " (List.map to_string ps) ^ ") -> " ^ to_string r
+  | TFnC (ps, r) ->
+      "extern fn(" ^ String.concat ", " (List.map to_string ps) ^ ") -> " ^ to_string r
   | TTask t -> "Task<" ^ to_string t ^ ">"
   | TVar v -> v
   | TInfer -> "_"
@@ -61,6 +64,7 @@ let rec subst_typ (sub : (string * typ) list) (t : typ) : typ =
   | TArray (t, n) -> TArray (subst_typ sub t, n)
   | TTuple ts -> TTuple (List.map (subst_typ sub) ts)
   | TFn (ps, r) -> TFn (List.map (subst_typ sub) ps, subst_typ sub r)
+  | TFnC (ps, r) -> TFnC (List.map (subst_typ sub) ps, subst_typ sub r)
   | TTask t -> TTask (subst_typ sub t)
   | t -> t
 
@@ -79,7 +83,8 @@ let is_pointer = function TPtr _ -> true | _ -> false
 let is_heap = function TBox _ -> true | _ -> false
 let is_enum = function TEnum _ -> true | _ -> false
 let is_tuple = function TTuple _ -> true | _ -> false
-let is_fn = function TFn _ -> true | _ -> false
+let is_fn = function TFn _ | TFnC _ -> true | _ -> false
+let is_c_fn = function TFnC _ -> true | _ -> false
 let is_task = function TTask _ -> true | _ -> false
 let rec peel_ref = function TRef (t, _) -> peel_ref t | t -> t
 

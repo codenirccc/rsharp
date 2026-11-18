@@ -26,6 +26,7 @@ pub enum Type {
     Infer,
     Tuple(Vec<Type>),
     Fn(Vec<Type>, Box<Type>),
+    FnC(Vec<Type>, Box<Type>),
     Task(Box<Type>),
     Param(String),
 }

@@ -34,3 +34,6 @@ work/http/certs/srv_meta.json
 __pycache__/
 *.pyc
 editors/vscode/*.vsix
+/work/dotnet/build/
+/work/dotnet/fixture/bin/
+/work/dotnet/fixture/obj/

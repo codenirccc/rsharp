@@ -237,6 +237,31 @@ impl Parser {
         Ok(s)
     }
 
+    fn parse_fn_type(&mut self, c_abi: bool) -> Result<Type, String> {
+        self.bump();
+        self.expect_sym("(")?;
+        let mut params = Vec::new();
+        if !self.at_sym(")") {
+            loop {
+                params.push(self.parse_type()?);
+                if !self.eat_sym(",") {
+                    break;
+                }
+            }
+        }
+        self.expect_sym(")")?;
+        let ret = if self.eat_sym("->") {
+            self.parse_type()?
+        } else {
+            Type::Void
+        };
+        if c_abi {
+            Ok(Type::FnC(params, Box::new(ret)))
+        } else {
+            Ok(Type::Fn(params, Box::new(ret)))
+        }
+    }
+
     pub fn parse_type(&mut self) -> Result<Type, String> {
         if self.eat_sym("(") {
             let mut items = Vec::new();
@@ -254,24 +279,15 @@ impl Parser {
             }
             return Ok(Type::Tuple(items));
         }
-        if self.at_kw("fn") {
-            self.bump();
-            self.expect_sym("(")?;            let mut params = Vec::new();
-            if !self.at_sym(")") {
-                loop {
-                    params.push(self.parse_type()?);
-                    if !self.eat_sym(",") {
-                        break;
-                    }
-                }
+        if self.eat_kw("extern") {
+            if !self.at_kw("fn") {
+                return self
+                    .err("'extern' in a type names an extern function pointer; write 'extern fn(...)'");
             }
-            self.expect_sym(")")?;
-            let ret = if self.eat_sym("->") {
-                self.parse_type()?
-            } else {
-                Type::Void
-            };
-            return Ok(Type::Fn(params, Box::new(ret)));
+            return self.parse_fn_type(true);
+        }
+        if self.at_kw("fn") {
+            return self.parse_fn_type(false);
         }
         if self.at_kw("Task") {
             self.bump();
@@ -1658,7 +1674,12 @@ fn fix_expr(e: &mut Expr, methods: &[(String, String, SelfKind)]) -> Result<(), 
             let hits: Vec<&(String, String, SelfKind)> =
                 methods.iter().filter(|(m, _, _)| m == name).collect();
             match hits.len() {
-                0 => return Err(format!("no method named '{}'", name)),
+                0 => {
+                    let target = recv.as_ref().clone();
+                    let callee = Expr::Field(Box::new(target), name.clone());
+                    let call_args = args.clone();
+                    *e = Expr::CallV(Box::new(callee), call_args);
+                }
                 1 => {
                     let (_, full, kind) = hits[0];
                     let mut call = Vec::with_capacity(args.len() + 1);

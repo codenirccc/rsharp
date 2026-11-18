@@ -184,7 +184,7 @@ fn glx_create(w: i32, h: i32) -> GLx {
                                    GLX_CONTEXT_MINOR_VERSION, 3,
                                    GLX_CONTEXT_PROFILE_MASK, GLX_CONTEXT_CORE_PROFILE_BIT,
                                    0, 0, 0];
-            var f: fn(ptr<u8>, ptr<u8>, ptr<i32>) -> ptr<u8> = pCreateAttribs as fn(ptr<u8>, ptr<u8>, ptr<i32>) -> ptr<u8>;
+            var f: extern fn(ptr<u8>, ptr<u8>, ptr<i32>) -> ptr<u8> = pCreateAttribs as extern fn(ptr<u8>, ptr<u8>, ptr<i32>) -> ptr<u8>;
             let ctx: ptr<u8> = f(dc, null, &attrs[0] as ptr<i32>);
             if (ctx != null) {
                 wglMakeCurrent(null, null);
@@ -238,23 +238,23 @@ fn glx_fbo_init(g: &mut GLx) -> i64 {
     var fbo: u32 = 0;
     var tex: u32 = 0;
     unsafe {
-        var genFbo: fn(i32, ptr<u32>) = pGenFramebuffers as fn(i32, ptr<u32>);
-        var genTex: fn(i32, ptr<u32>) = pGenTextures as fn(i32, ptr<u32>);
+        var genFbo: extern fn(i32, ptr<u32>) = pGenFramebuffers as extern fn(i32, ptr<u32>);
+        var genTex: extern fn(i32, ptr<u32>) = pGenTextures as extern fn(i32, ptr<u32>);
         genFbo(1, &fbo as ptr<u32>);
         genTex(1, &tex as ptr<u32>);
-        var bindFbo: fn(u32, u32) = pBindFramebuffer as fn(u32, u32);
+        var bindFbo: extern fn(u32, u32) = pBindFramebuffer as extern fn(u32, u32);
         bindFbo(GL_FRAMEBUFFER, fbo);
-        var bindTex: fn(u32, u32) = pBindTexture as fn(u32, u32);
+        var bindTex: extern fn(u32, u32) = pBindTexture as extern fn(u32, u32);
         bindTex(GL_TEXTURE_2D, tex);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, g.w, g.h, 0, GL_RGBA, GL_UNSIGNED_BYTE, null);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        var fbTex: fn(u32, u32, u32, u32, i32) = pFramebufferTexture2D as fn(u32, u32, u32, u32, i32);
+        var fbTex: extern fn(u32, u32, u32, u32, i32) = pFramebufferTexture2D as extern fn(u32, u32, u32, u32, i32);
         fbTex(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
         glDrawBuffer(GL_COLOR_ATTACHMENT0);
-        var checkStatus: fn(u32) -> u32 = pCheckFramebufferStatus as fn(u32) -> u32;
+        var checkStatus: extern fn(u32) -> u32 = pCheckFramebufferStatus as extern fn(u32) -> u32;
         let status: u32 = checkStatus(GL_FRAMEBUFFER);
         if (status == GL_FRAMEBUFFER_COMPLETE) {
             ok = 1;
@@ -280,20 +280,20 @@ fn glx_shader(src: ptr<u8>, kind: u32) -> u32 {
         printf("glx: shader entry points missing\n");
         return 0;
     }
-    var createShader: fn(u32) -> u32 = pCreateShader as fn(u32) -> u32;
+    var createShader: extern fn(u32) -> u32 = pCreateShader as extern fn(u32) -> u32;
     let shader: u32 = createShader(kind);
     if (shader == 0) {
         printf("glx: glCreateShader failed\n");
         return 0;
     }
-    var shaderSource: fn(u32, u32, ptr<ptr<u8>>, ptr<i32>) = pShaderSource as fn(u32, u32, ptr<ptr<u8>>, ptr<i32>);
+    var shaderSource: extern fn(u32, u32, ptr<ptr<u8>>, ptr<i32>) = pShaderSource as extern fn(u32, u32, ptr<ptr<u8>>, ptr<i32>);
     var strings: [ptr<u8>; 1] = [src];
     unsafe {
         shaderSource(shader, 1, (&strings[0]) as ptr<ptr<u8>>, null);
     }
-    var compileShader: fn(u32) = pCompileShader as fn(u32);
+    var compileShader: extern fn(u32) = pCompileShader as extern fn(u32);
     compileShader(shader);
-    var getShaderiv: fn(u32, u32, ptr<i32>) = pGetShaderiv as fn(u32, u32, ptr<i32>);
+    var getShaderiv: extern fn(u32, u32, ptr<i32>) = pGetShaderiv as extern fn(u32, u32, ptr<i32>);
     var compiled: i32 = 0;
     unsafe {
         getShaderiv(shader, GL_COMPILE_STATUS, (&mut compiled) as ptr<i32>);
@@ -301,7 +301,7 @@ fn glx_shader(src: ptr<u8>, kind: u32) -> u32 {
     if (compiled == 1) {
         return shader;
     }
-    var getShaderInfoLog: fn(u32, i32, ptr<i32>, ptr<u8>) = pGetShaderInfoLog as fn(u32, i32, ptr<i32>, ptr<u8>);
+    var getShaderInfoLog: extern fn(u32, i32, ptr<i32>, ptr<u8>) = pGetShaderInfoLog as extern fn(u32, i32, ptr<i32>, ptr<u8>);
     var log: [u8; 1024] = [0];
     var length: i32 = 0;
     unsafe {
@@ -312,7 +312,7 @@ fn glx_shader(src: ptr<u8>, kind: u32) -> u32 {
         log_s = &log[0] as ptr<u8>;
     }
     printf("glx: shader compile failed\n%s\n", log_s);
-    var deleteShader: fn(u32) = pDeleteShader as fn(u32);
+    var deleteShader: extern fn(u32) = pDeleteShader as extern fn(u32);
     deleteShader(shader);
     return 0;
 }
@@ -329,18 +329,18 @@ fn glx_program(vertex: u32, fragment: u32) -> u32 {
         printf("glx: program entry points missing\n");
         return 0;
     }
-    var createProgram: fn() -> u32 = pCreateProgram as fn() -> u32;
+    var createProgram: extern fn() -> u32 = pCreateProgram as extern fn() -> u32;
     let prog: u32 = createProgram();
     if (prog == 0) {
         printf("glx: glCreateProgram failed\n");
         return 0;
     }
-    var attachShader: fn(u32, u32) = pAttachShader as fn(u32, u32);
+    var attachShader: extern fn(u32, u32) = pAttachShader as extern fn(u32, u32);
     attachShader(prog, vertex);
     attachShader(prog, fragment);
-    var linkProgram: fn(u32) = pLinkProgram as fn(u32);
+    var linkProgram: extern fn(u32) = pLinkProgram as extern fn(u32);
     linkProgram(prog);
-    var getProgramiv: fn(u32, u32, ptr<i32>) = pGetProgramiv as fn(u32, u32, ptr<i32>);
+    var getProgramiv: extern fn(u32, u32, ptr<i32>) = pGetProgramiv as extern fn(u32, u32, ptr<i32>);
     var linked: i32 = 0;
     unsafe {
         getProgramiv(prog, GL_LINK_STATUS, (&mut linked) as ptr<i32>);
@@ -348,7 +348,7 @@ fn glx_program(vertex: u32, fragment: u32) -> u32 {
     if (linked == 1) {
         return prog;
     }
-    var getProgramInfoLog: fn(u32, i32, ptr<i32>, ptr<u8>) = pGetProgramInfoLog as fn(u32, i32, ptr<i32>, ptr<u8>);
+    var getProgramInfoLog: extern fn(u32, i32, ptr<i32>, ptr<u8>) = pGetProgramInfoLog as extern fn(u32, i32, ptr<i32>, ptr<u8>);
     var log: [u8; 1024] = [0];
     var length: i32 = 0;
     unsafe {
@@ -359,7 +359,7 @@ fn glx_program(vertex: u32, fragment: u32) -> u32 {
         log_p = &log[0] as ptr<u8>;
     }
     printf("glx: program link failed\n%s\n", log_p);
-    var deleteProgram: fn(u32) = pDeleteProgram as fn(u32);
+    var deleteProgram: extern fn(u32) = pDeleteProgram as extern fn(u32);
     deleteProgram(prog);
     return 0;
 }
@@ -383,16 +383,16 @@ fn glx_draw_triangle(g: &mut GLx) {
     var verts: [f32; 18] = [0.0 - 0.7, 0.0 - 0.7, 0.0, 1.0, 0.0, 0.0,
                             0.7, 0.0 - 0.7, 0.0, 1.0, 0.0, 0.0,
                             0.0, 0.7, 0.0, 1.0, 0.0, 0.0];
-    var useProgram: fn(u32) = pUseProgram as fn(u32);
+    var useProgram: extern fn(u32) = pUseProgram as extern fn(u32);
     useProgram(g.prog);
-    var genVertexArrays: fn(i32, ptr<u32>) = pGenVertexArrays as fn(i32, ptr<u32>);
-    var bindVertexArray: fn(u32) = pBindVertexArray as fn(u32);
-    var genBuffers: fn(i32, ptr<u32>) = pGenBuffers as fn(i32, ptr<u32>);
-    var bindBuffer: fn(u32, u32) = pBindBuffer as fn(u32, u32);
-    var bufferData: fn(u32, i64, ptr<u8>, u32) = pBufferData as fn(u32, i64, ptr<u8>, u32);
-    var vertexAttribPointer: fn(u32, i32, u32, u32, i32, ptr<u8>) = pVertexAttribPointer as fn(u32, i32, u32, u32, i32, ptr<u8>);
-    var enableAttrib: fn(u32) = pEnableVertexAttribArray as fn(u32);
-    var drawArrays: fn(u32, i32, i32) = pDrawArrays as fn(u32, i32, i32);
+    var genVertexArrays: extern fn(i32, ptr<u32>) = pGenVertexArrays as extern fn(i32, ptr<u32>);
+    var bindVertexArray: extern fn(u32) = pBindVertexArray as extern fn(u32);
+    var genBuffers: extern fn(i32, ptr<u32>) = pGenBuffers as extern fn(i32, ptr<u32>);
+    var bindBuffer: extern fn(u32, u32) = pBindBuffer as extern fn(u32, u32);
+    var bufferData: extern fn(u32, i64, ptr<u8>, u32) = pBufferData as extern fn(u32, i64, ptr<u8>, u32);
+    var vertexAttribPointer: extern fn(u32, i32, u32, u32, i32, ptr<u8>) = pVertexAttribPointer as extern fn(u32, i32, u32, u32, i32, ptr<u8>);
+    var enableAttrib: extern fn(u32) = pEnableVertexAttribArray as extern fn(u32);
+    var drawArrays: extern fn(u32, i32, i32) = pDrawArrays as extern fn(u32, i32, i32);
     unsafe {
         genVertexArrays(1, (&mut g.vao) as ptr<u32>);
         bindVertexArray(g.vao);
@@ -438,14 +438,23 @@ fn glx_sample() -> i32 {
     glViewport(0, 0, g.w, g.h);
     glx_draw_triangle(&mut g);
     var pixels: [u8; 4] = [0];
+    var corner: [u8; 4] = [0];
     unsafe {
         glReadPixels(g.w / 2, g.h / 2, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, &pixels[0] as ptr<u8>);
+        glReadPixels(2, 2, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, &corner[0] as ptr<u8>);
     }
     printf("gl: center pixel %u %u %u %u\n", pixels[0], pixels[1], pixels[2], pixels[3]);
+    printf("gl: corner pixel %u %u %u %u\n", corner[0], corner[1], corner[2], corner[3]);
     if (pixels[0] >= 200 && pixels[1] <= 80 && pixels[2] <= 80) {
         printf("gl: triangle center is red\n");
     } else {
         printf("gl: triangle center mismatch\n");
+        fails += 1;
+    }
+    if (corner[0] < 100 && corner[1] < 100 && corner[2] < 100 && corner[0] != pixels[0]) {
+        printf("gl: corner kept the clear colour\n");
+    } else {
+        printf("gl: corner was painted\n");
         fails += 1;
     }
     glx_destroy(&mut g);

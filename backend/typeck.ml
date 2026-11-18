@@ -90,6 +90,9 @@ let rec check_type ctx t =
   | TFn (ps, r) ->
       List.iter (fun t -> if t = TVoid then note ctx "a function pointer cannot take void") ps;
       check_type ctx r
+  | TFnC (ps, r) ->
+      List.iter (fun t -> if t = TVoid then note ctx "a function pointer cannot take void") ps;
+      check_type ctx r
   | TTask t ->
       if t = TVoid then note ctx "a Task needs a value type, not void";
       check_type ctx t
@@ -141,6 +144,7 @@ let rec mangle_typ = function
   | TEnum s -> s
   | TTuple ts -> "tup_" ^ String.concat "_" (List.map mangle_typ ts)
   | TFn (ps, r) -> "fn_" ^ String.concat "_" (List.map mangle_typ ps) ^ "_" ^ mangle_typ r
+  | TFnC (ps, r) -> "fnc_" ^ String.concat "_" (List.map mangle_typ ps) ^ "_" ^ mangle_typ r
   | TTask t -> "task_" ^ mangle_typ t
   | TVar v -> "ty_" ^ v
   | TInfer -> "infer"
@@ -155,6 +159,7 @@ let rec has_var = function
   | TRef (t, _) -> has_var t
   | TTuple ts -> List.exists has_var ts
   | TFn (ps, r) -> List.exists has_var ps || has_var r
+  | TFnC (ps, r) -> List.exists has_var ps || has_var r
   | _ -> false
 
 let pending : (string, string * (string * typ) list) Hashtbl.t = Hashtbl.create 32
@@ -202,6 +207,12 @@ let rec unify ctx ~who (bind : (string, typ) Hashtbl.t) (formal : typ) (actual :
   | TFn (fp, fr) -> (
       match actual with
       | TFn (ap, ar) when List.length fp = List.length ap ->
+          List.iter2 (unify ctx ~who bind) fp ap;
+          unify ctx ~who bind fr ar
+      | _ -> bad ())
+  | TFnC (fp, fr) -> (
+      match actual with
+      | TFnC (ap, ar) when List.length fp = List.length ap ->
           List.iter2 (unify ctx ~who bind) fp ap;
           unify ctx ~who bind fr ar
       | _ -> bad ())
@@ -561,7 +572,7 @@ let rec infer ctx ?expect (e : expr) : expr =
       | TErr ->
           List.iter (fun a -> ignore (infer ctx a)) args;
           set TErr
-      | TFn (ps, r) ->
+      | TFn (ps, r) | TFnC (ps, r) ->
           let np = List.length ps in
           if np <> List.length args then
             note ctx "this function pointer takes %d argument(s), got %d" np
@@ -693,7 +704,7 @@ let rec infer ctx ?expect (e : expr) : expr =
       | Some tparams -> instantiate ctx e name tparams args
       | None -> (
           match lookup ctx name with
-      | Some (TFn _, _) ->
+      | Some (TFn _, _) | Some (TFnC _, _) ->
           e.node <- ECallV ({ node = EVar name; ty = TVoid }, args);
           infer ctx e
       | Some (t, _) ->
@@ -1070,10 +1081,18 @@ let check_program (p : program) : string list =
   List.iter
     (fun (e : extern_fn) ->
       ctx.where <- "extern " ^ e.ename;
-      if Hashtbl.mem ctx.funcs e.ename then note ctx "duplicate function '%s'" e.ename
-      else
-        Hashtbl.add ctx.funcs e.ename
-          { sig_params = e.eparams; sig_ret = e.eret; sig_variadic = e.evariadic };
+      (match Hashtbl.find_opt ctx.funcs e.ename with
+      | Some sg ->
+          if
+            sg.sig_params <> e.eparams
+            || sg.sig_ret <> e.eret
+            || sg.sig_variadic <> e.evariadic
+          then
+            note ctx "extern '%s' is declared twice with different signatures"
+              e.ename
+      | None ->
+          Hashtbl.add ctx.funcs e.ename
+            { sig_params = e.eparams; sig_ret = e.eret; sig_variadic = e.evariadic });
       List.iter (check_type ctx) e.eparams;
       check_type ctx e.eret)
     p.externs;
