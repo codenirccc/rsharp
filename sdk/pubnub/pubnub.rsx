@@ -1,11 +1,8 @@
-
 extern fn printf(fmt: ptr<u8>, ...) -> i32;
 
 extern "kernel32" {
-    fn GetStdHandle(kind: i32) -> i64;
-    fn WriteFile(h: i64, buf: ptr<u8>, n: u32, wrote: ptr<u32>, ov: ptr<u8>) -> i32;
-    fn MultiByteToWideChar(cp: u32, flags: u32, s: ptr<u8>, slen: i32, d: ptr<u16>, dlen: i32) -> i32;
     fn GetEnvironmentVariableA(name: ptr<u8>, buf: ptr<u8>, size: u32) -> u32;
+    fn MultiByteToWideChar(cp: u32, flags: u32, s: ptr<u8>, slen: i32, d: ptr<u16>, dlen: i32) -> i32;
 }
 
 extern "winhttp" {
@@ -23,13 +20,13 @@ extern "winhttp" {
     fn WinHttpCloseHandle(h: i64) -> i32;
 }
 
-const PATHMAX: i64 = 2048;
-const BODYMAX: i64 = 8192;
-const CFGMAX: i64 = 160;
+const PATHSZ: i64 = 2048;
+const BODYSZ: i64 = 8192;
+const CFGSZ: u32 = 160;
 
-const WINHTTP_ACCESS_TYPE_NO_PROXY: u32 = 1;
-const WINHTTP_FLAG_SECURE: u32 = 0x00800000;
-const WINHTTP_QUERY_STATUS_CODE: u32 = 0x20000013;
+const ACCESS_NO_PROXY: u32 = 1;
+const FLAG_SECURE: u32 = 0x00800000;
+const QUERY_STATUS: u32 = 0x20000013;
 
 struct PubNub {
     pubkey: ptr<u8>,
@@ -37,7 +34,6 @@ struct PubNub {
     channel: ptr<u8>,
     uuid: ptr<u8>
 }
-
 
 fn hexd(v: u8) -> u8 {
     if (v < 10) {
@@ -170,13 +166,17 @@ fn say(s: ptr<u8>) {
 
 fn load_cfg(name: ptr<u8>, dst: ptr<u8>, fallback: ptr<u8>, cap: u32) {
     var n: u32 = 0;
-    unsafe { n = GetEnvironmentVariableA(name, dst, cap); }
+    unsafe {
+        n = GetEnvironmentVariableA(name, dst, cap);
+    }
     if (n == 0) {
         var at: i64 = 0;
-        unsafe { put_into(dst, &at as ptr<i64>, fallback); }
+        unsafe {
+            put_into(dst, &mut at as ptr<i64>, fallback);
+            dst[at] = 0;
+        }
     }
 }
-
 
 fn wcopy(dst: ptr<u16>, cap: i32, src: ptr<u8>) -> i32 {
     return MultiByteToWideChar(65001, 0, src, -1, dst, cap);
@@ -186,25 +186,33 @@ fn pn_get(path: ptr<u8>, out: ptr<u8>, cap: i64) -> i64 {
     var agent: [u16; 64] = [0];
     var host: [u16; 64] = [0];
     var verb: [u16; 8] = [0];
-    var wpath: [u16; PATHMAX] = [0];
+    var wpath: [u16; 2048] = [0];
 
     unsafe {
-        wcopy(&agent[0] as ptr<u16>, 64, "rsharp-pubnub/1.0");
-        wcopy(&host[0] as ptr<u16>, 64, "ps.pndsn.com");
-        wcopy(&verb[0] as ptr<u16>, 8, "GET");
-        wcopy(&wpath[0] as ptr<u16>, PATHMAX as i32, path);
+        wcopy(&mut agent[0] as ptr<u16>, 64, "rsharp-pubnub/1.0" as ptr<u8>);
+        wcopy(&mut host[0] as ptr<u16>, 64, "ps.pndsn.com" as ptr<u8>);
+        wcopy(&mut verb[0] as ptr<u16>, 8, "GET" as ptr<u8>);
+        wcopy(&mut wpath[0] as ptr<u16>, PATHSZ as i32, path);
     }
 
     var session: i64 = 0;
-    unsafe { session = WinHttpOpen(&agent[0] as ptr<u16>, WINHTTP_ACCESS_TYPE_NO_PROXY, null, null, 0); }
+    unsafe {
+        session = WinHttpOpen(&mut agent[0] as ptr<u16>, ACCESS_NO_PROXY, null, null, 0);
+    }
     if (session == 0) {
-        unsafe { out[0] = 0; }
+        unsafe {
+            out[0] = 0;
+        }
         return -1;
     }
-    unsafe { WinHttpSetTimeouts(session, 5000, 5000, 5000, 30000); }
+    unsafe {
+        WinHttpSetTimeouts(session, 5000, 5000, 5000, 30000);
+    }
 
     var conn: i64 = 0;
-    unsafe { conn = WinHttpConnect(session, &host[0] as ptr<u16>, 443, 0); }
+    unsafe {
+        conn = WinHttpConnect(session, &mut host[0] as ptr<u16>, 443, 0);
+    }
     if (conn == 0) {
         unsafe {
             out[0] = 0;
@@ -215,8 +223,8 @@ fn pn_get(path: ptr<u8>, out: ptr<u8>, cap: i64) -> i64 {
 
     var req: i64 = 0;
     unsafe {
-        req = WinHttpOpenRequest(conn, &verb[0] as ptr<u16>, &wpath[0] as ptr<u16>,
-                                 null, null, null, WINHTTP_FLAG_SECURE);
+        req = WinHttpOpenRequest(conn, &mut verb[0] as ptr<u16>, &mut wpath[0] as ptr<u16>,
+                                 null, null, null, FLAG_SECURE);
     }
     if (req == 0) {
         unsafe {
@@ -247,23 +255,23 @@ fn pn_get(path: ptr<u8>, out: ptr<u8>, cap: i64) -> i64 {
     var code: u32 = 0;
     var clen: u32 = 4;
     unsafe {
-        WinHttpQueryHeaders(req, WINHTTP_QUERY_STATUS_CODE, null,
-                            &code as ptr<u8>, &clen as ptr<u32>, null);
+        WinHttpQueryHeaders(req, QUERY_STATUS, null, &mut code as ptr<u8>, &mut clen as ptr<u32>, null);
     }
 
     var total: i64 = 0;
     while (total < cap - 1) {
         var chunk: u32 = 0;
         unsafe {
-            ok = WinHttpReadData(req, &out[total] as ptr<u8>, (cap - 1 - total) as u32,
-                                 &chunk as ptr<u32>);
+            ok = WinHttpReadData(req, out + total, (cap - 1 - total) as u32, &mut chunk as ptr<u32>);
         }
         if (ok == 0 || chunk == 0) {
             break;
         }
         total = total + chunk as i64;
     }
-    unsafe { out[total] = 0; }
+    unsafe {
+        out[total] = 0;
+    }
 
     unsafe {
         WinHttpCloseHandle(req);
@@ -319,71 +327,69 @@ fn tt_into(body: ptr<u8>, dst: ptr<u8>) {
     }
 }
 
-
 fn pn_publish(p: &PubNub, msg: ptr<u8>, out: ptr<u8>, cap: i64) -> i64 {
-    var path: [u8; PATHMAX] = [0];
+    var path: [u8; 2048] = [0];
     var json: [u8; 1024] = [0];
     var at: i64 = 0;
     var jn: i64 = 0;
-
-    unsafe { json_into(&json[0] as ptr<u8>, &jn as ptr<i64>, msg); }
-
     unsafe {
-        put_into(&path[0] as ptr<u8>, &at as ptr<i64>, "/publish/");
-        pct_into(&path[0] as ptr<u8>, &at as ptr<i64>, p.pubkey);
-        put_into(&path[0] as ptr<u8>, &at as ptr<i64>, "/");
-        pct_into(&path[0] as ptr<u8>, &at as ptr<i64>, p.subkey);
-        put_into(&path[0] as ptr<u8>, &at as ptr<i64>, "/0/");
-        pct_into(&path[0] as ptr<u8>, &at as ptr<i64>, p.channel);
-        put_into(&path[0] as ptr<u8>, &at as ptr<i64>, "/0/");
-        put_into(&path[0] as ptr<u8>, &at as ptr<i64>, &json[0] as ptr<u8>);
-        put_into(&path[0] as ptr<u8>, &at as ptr<i64>, "?uuid=");
-        pct_into(&path[0] as ptr<u8>, &at as ptr<i64>, p.uuid);
+        json_into(&mut json[0] as ptr<u8>, &mut jn as ptr<i64>, msg);
+        put_into(&mut path[0] as ptr<u8>, &mut at as ptr<i64>, "/publish/" as ptr<u8>);
+        pct_into(&mut path[0] as ptr<u8>, &mut at as ptr<i64>, p.pubkey);
+        put_into(&mut path[0] as ptr<u8>, &mut at as ptr<i64>, "/" as ptr<u8>);
+        pct_into(&mut path[0] as ptr<u8>, &mut at as ptr<i64>, p.subkey);
+        put_into(&mut path[0] as ptr<u8>, &mut at as ptr<i64>, "/0/" as ptr<u8>);
+        pct_into(&mut path[0] as ptr<u8>, &mut at as ptr<i64>, p.channel);
+        put_into(&mut path[0] as ptr<u8>, &mut at as ptr<i64>, "/0/" as ptr<u8>);
+        put_into(&mut path[0] as ptr<u8>, &mut at as ptr<i64>, &mut json[0] as ptr<u8>);
+        put_into(&mut path[0] as ptr<u8>, &mut at as ptr<i64>, "?uuid=" as ptr<u8>);
+        pct_into(&mut path[0] as ptr<u8>, &mut at as ptr<i64>, p.uuid);
+        path[at] = 0;
     }
-    path[at] = 0;
-
     var st: i64 = 0;
-    unsafe { st = pn_get(&path[0] as ptr<u8>, out, cap); }
+    unsafe {
+        st = pn_get(&mut path[0] as ptr<u8>, out, cap);
+    }
     return st;
 }
 
 fn pn_history(p: &PubNub, count: i64, out: ptr<u8>, cap: i64) -> i64 {
-    var path: [u8; PATHMAX] = [0];
+    var path: [u8; 2048] = [0];
     var at: i64 = 0;
-
     unsafe {
-        put_into(&path[0] as ptr<u8>, &at as ptr<i64>, "/v2/history/sub-key/");
-        pct_into(&path[0] as ptr<u8>, &at as ptr<i64>, p.subkey);
-        put_into(&path[0] as ptr<u8>, &at as ptr<i64>, "/channel/");
-        pct_into(&path[0] as ptr<u8>, &at as ptr<i64>, p.channel);
-        put_into(&path[0] as ptr<u8>, &at as ptr<i64>, "?count=");
-        num_into(&path[0] as ptr<u8>, &at as ptr<i64>, count);
+        put_into(&mut path[0] as ptr<u8>, &mut at as ptr<i64>, "/v2/history/sub-key/" as ptr<u8>);
+        pct_into(&mut path[0] as ptr<u8>, &mut at as ptr<i64>, p.subkey);
+        put_into(&mut path[0] as ptr<u8>, &mut at as ptr<i64>, "/channel/" as ptr<u8>);
+        pct_into(&mut path[0] as ptr<u8>, &mut at as ptr<i64>, p.channel);
+        put_into(&mut path[0] as ptr<u8>, &mut at as ptr<i64>, "?count=" as ptr<u8>);
+        num_into(&mut path[0] as ptr<u8>, &mut at as ptr<i64>, count);
+        path[at] = 0;
     }
-    path[at] = 0;
-
     var st: i64 = 0;
-    unsafe { st = pn_get(&path[0] as ptr<u8>, out, cap); }
+    unsafe {
+        st = pn_get(&mut path[0] as ptr<u8>, out, cap);
+    }
     return st;
 }
 
 fn pn_subscribe(p: &PubNub, tt: ptr<u8>, out: ptr<u8>, cap: i64) -> i64 {
-    var path: [u8; PATHMAX] = [0];
+    var path: [u8; 2048] = [0];
     var at: i64 = 0;
-
     unsafe {
-        put_into(&path[0] as ptr<u8>, &at as ptr<i64>, "/subscribe/");
-        pct_into(&path[0] as ptr<u8>, &at as ptr<i64>, p.subkey);
-        put_into(&path[0] as ptr<u8>, &at as ptr<i64>, "/");
-        pct_into(&path[0] as ptr<u8>, &at as ptr<i64>, p.channel);
-        put_into(&path[0] as ptr<u8>, &at as ptr<i64>, "/0/");
-        put_into(&path[0] as ptr<u8>, &at as ptr<i64>, tt);
-        put_into(&path[0] as ptr<u8>, &at as ptr<i64>, "?uuid=");
-        pct_into(&path[0] as ptr<u8>, &at as ptr<i64>, p.uuid);
+        put_into(&mut path[0] as ptr<u8>, &mut at as ptr<i64>, "/subscribe/" as ptr<u8>);
+        pct_into(&mut path[0] as ptr<u8>, &mut at as ptr<i64>, p.subkey);
+        put_into(&mut path[0] as ptr<u8>, &mut at as ptr<i64>, "/" as ptr<u8>);
+        pct_into(&mut path[0] as ptr<u8>, &mut at as ptr<i64>, p.channel);
+        put_into(&mut path[0] as ptr<u8>, &mut at as ptr<i64>, "/0/" as ptr<u8>);
+        put_into(&mut path[0] as ptr<u8>, &mut at as ptr<i64>, tt);
+        put_into(&mut path[0] as ptr<u8>, &mut at as ptr<i64>, "?uuid=" as ptr<u8>);
+        pct_into(&mut path[0] as ptr<u8>, &mut at as ptr<i64>, p.uuid);
+        path[at] = 0;
     }
-    path[at] = 0;
-
     var st: i64 = 0;
-    unsafe { st = pn_get(&path[0] as ptr<u8>, out, cap); }
+    unsafe {
+        st = pn_get(&mut path[0] as ptr<u8>, out, cap);
+    }
     return st;
 }
 
@@ -391,101 +397,97 @@ fn pn_time(p: &PubNub, out: ptr<u8>, cap: i64) -> i64 {
     var path: [u8; 64] = [0];
     var at: i64 = 0;
     unsafe {
-        put_into(&path[0] as ptr<u8>, &at as ptr<i64>, "/time/0?uuid=");
-        pct_into(&path[0] as ptr<u8>, &at as ptr<i64>, p.uuid);
+        put_into(&mut path[0] as ptr<u8>, &mut at as ptr<i64>, "/time/0?uuid=" as ptr<u8>);
+        pct_into(&mut path[0] as ptr<u8>, &mut at as ptr<i64>, p.uuid);
+        path[at] = 0;
     }
-    path[at] = 0;
-
     var st: i64 = 0;
-    unsafe { st = pn_get(&path[0] as ptr<u8>, out, cap); }
+    unsafe {
+        st = pn_get(&mut path[0] as ptr<u8>, out, cap);
+    }
     return st;
 }
 
-
-fn main() -> i32
-    var pubkey: [u8; CFGMAX] = [0];
-    var subkey: [u8; CFGMAX] = [0];
-    var chan: [u8; CFGMAX] = [0];
-    var body: [u8; BODYMAX] = [0];
+fn main() -> i32 {
+    var pubkey: [u8; 160] = [0];
+    var subkey: [u8; 160] = [0];
+    var chan: [u8; 160] = [0];
+    var body: [u8; 8192] = [0];
     var tt: [u8; 64] = [0];
 
-    unsafe
-        load_cfg("PUBNUB_PUBLISH_KEY", &pubkey[0] as ptr<u8>, "demo", CFGMAX as u32);
-        load_cfg("PUBNUB_SUBSCRIBE_KEY", &subkey[0] as ptr<u8>, "demo", CFGMAX as u32);
-        load_cfg("PUBNUB_CHANNEL", &chan[0] as ptr<u8>, "rsharp", CFGMAX as u32);
-    end;
+    unsafe {
+        load_cfg("PUBNUB_PUBLISH_KEY" as ptr<u8>, &mut pubkey[0] as ptr<u8>, "demo" as ptr<u8>, CFGSZ);
+        load_cfg("PUBNUB_SUBSCRIBE_KEY" as ptr<u8>, &mut subkey[0] as ptr<u8>, "demo" as ptr<u8>, CFGSZ);
+        load_cfg("PUBNUB_CHANNEL" as ptr<u8>, &mut chan[0] as ptr<u8>, "rsharp" as ptr<u8>, CFGSZ);
+    }
 
-    var pn: PubNub = PubNub {
-        pubkey: "demo",
-        subkey: "demo",
-        channel: "rsharp",
-        uuid: "rsharp-demo"
-    };
+    var pn: PubNub = zero(PubNub);
+    pn.pubkey = "demo" as ptr<u8>;
+    pn.subkey = "demo" as ptr<u8>;
+    pn.channel = "rsharp" as ptr<u8>;
+    pn.uuid = "rsharp-demo" as ptr<u8>;
 
     var bodyp: ptr<u8> = null;
     var ttp: ptr<u8> = null;
     var st: i64 = 0;
-    unsafe
-        pn.pubkey = &pubkey[0] as ptr<u8>;
-        pn.subkey = &subkey[0] as ptr<u8>;
-        pn.channel = &chan[0] as ptr<u8>;
-        bodyp = &body[0] as ptr<u8>;
-        ttp = &tt[0] as ptr<u8>;
-    end;
+    unsafe {
+        pn.pubkey = &mut pubkey[0] as ptr<u8>;
+        pn.subkey = &mut subkey[0] as ptr<u8>;
+        pn.channel = &mut chan[0] as ptr<u8>;
+        bodyp = &mut body[0] as ptr<u8>;
+        ttp = &mut tt[0] as ptr<u8>;
+    }
 
     printf("pubnub: channel %s\n", pn.channel);
 
-    unsafe
-        st = pn_time(&pn, bodyp, BODYMAX);
-    end;
+    unsafe {
+        st = pn_time(&pn, bodyp, BODYSZ);
+    }
     printf("time       %lld  ", st);
     say(bodyp);
 
-    unsafe
-        st = pn_publish(&pn, "hello from rsharp", bodyp, BODYMAX);
-    end;
+    unsafe {
+        st = pn_publish(&pn, "hello from rsharp" as ptr<u8>, bodyp, BODYSZ);
+    }
     printf("publish    %lld  ", st);
     say(bodyp);
 
-    unsafe
-        st = pn_history(&pn, 5, bodyp, BODYMAX);
-    end;
+    unsafe {
+        st = pn_history(&pn, 5, bodyp, BODYSZ);
+    }
     printf("history    %lld  ", st);
     say(bodyp);
 
-    unsafe
+    unsafe {
         tt[0] = 48;
         tt[1] = 0;
-    end;
-
-    unsafe
-        st = pn_subscribe(&pn, ttp, bodyp, BODYMAX);
-    end;
+        st = pn_subscribe(&pn, ttp, bodyp, BODYSZ);
+    }
     printf("subscribe  %lld  ", st);
     say(bodyp);
-    unsafe
+    unsafe {
         tt_into(bodyp, ttp);
-    end;
+    }
     printf("next tt    %s\n", ttp);
 
     var round: i64 = 0;
-    while (round < 3)
-        unsafe
-            st = pn_publish(&pn, "ping from rsharp", bodyp, BODYMAX);
-        end;
+    while (round < 3) {
+        unsafe {
+            st = pn_publish(&pn, "ping from rsharp" as ptr<u8>, bodyp, BODYSZ);
+        }
         printf("publish    %lld  ", st);
         say(bodyp);
-        unsafe
-            st = pn_subscribe(&pn, ttp, bodyp, BODYMAX);
-        end;
+        unsafe {
+            st = pn_subscribe(&pn, ttp, bodyp, BODYSZ);
+        }
         printf("subscribe  %lld  ", st);
         say(bodyp);
-        unsafe
+        unsafe {
             tt_into(bodyp, ttp);
-        end;
+        }
         printf("next tt    %s\n", ttp);
         round = round + 1;
-    end;
+    }
 
     return 0;
-end;
+}
