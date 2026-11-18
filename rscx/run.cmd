@@ -24,6 +24,9 @@ if errorlevel 1 exit /b 1
 call "%HERE%..\rsc.cmd" "%HERE%t_bx.rsx" "%OUT%\t_bx.exe"
 if errorlevel 1 exit /b 1
 
+call "%HERE%..\rsc.cmd" "%HERE%t_fold.rsx" "%OUT%\t_fold.exe"
+if errorlevel 1 exit /b 1
+
 set "FILES="
 for %%F in (hello structs arrays enums pointers tuples literals generics closures edge limits) do (
     "%OUT%\rsc2.exe" "%EX%\%%F.rsx" -o "%OUT%\%%F.rsi"
@@ -32,6 +35,9 @@ for %%F in (hello structs arrays enums pointers tuples literals generics closure
 )
 
 "%OUT%\t_bx.exe" %FILES%
+if errorlevel 1 exit /b 1
+
+"%OUT%\t_fold.exe" %FILES%
 if errorlevel 1 exit /b 1
 
 echo rscx: ok
