@@ -7,7 +7,7 @@ Nothing here re-implements the compiler; it teaches the editor to read.
 | --- | --- | --- |
 | VS Code | `editors/vscode/` | syntax, snippets, problem matchers |
 | Vim 8 | `editors/vim/` | filetype, syntax, indent, `:compiler`, two commands |
-| Neovim | `editors/neovim/` | the Vim files plus Lua commands, a quickfix build and a lazy.nvim spec |
+| Neovim | `editors/neovim/` | the Vim files plus Lua commands, a quickfix build, an LSP client and a lazy.nvim spec |
 
 The repo itself carries `.vscode/tasks.json`, so building and running from a
 fresh clone works with no extension installed at all.
@@ -127,18 +127,31 @@ require('rsharp').setup()
 :RsharpRun       " compile, then run it in a terminal split
 :RsharpTest      " regress.sh, or regress.cmd on Windows
 :MiniRun         " compile and run the current .mini through mini/run.sh
+:RsharpLsp       " attach the language server to this buffer
 ```
 
-`setup()` takes `{ rsc = ..., mini = ..., test = ... }`; each one overrides the
-driver that would otherwise be found by walking up from the plugin directory.
-With no arguments it finds `rsc.sh`/`rsc.cmd`, `mini/run.sh`/`mini/run.cmd` and
-`regress.sh`/`regress.cmd` next to the repo, so the overrides are only for a
-checkout somewhere unexpected.
+`setup()` takes `{ rsc = ..., mini = ..., test = ..., lsp = ... }`; each one
+overrides the driver that would otherwise be found by walking up from the plugin
+directory. With no arguments it finds `rsc.sh`/`rsc.cmd`,
+`mini/run.sh`/`mini/run.cmd` and `regress.sh`/`regress.cmd` next to the repo, so
+the overrides are only for a checkout somewhere unexpected.
 
 `.cmd` drivers on Windows go through the shell, quoted per argument, because
 `cmd.exe` re-parses its own command line and mangles a bare argument list as
 soon as a path contains a space. `rsc.sh` and the compiled `.exe` are spawned
 directly.
+
+The language server is not built by the plugin. `work/lsp/run.cmd` builds
+`work/lsp/build/t_lspsrv.exe` and runs its suite; until that exists, `.rsx`
+buffers load exactly as they did before. Once it does, opening any `.rsx` file
+attaches the client, and `:RsharpLsp` attaches it by hand. `setup({ lsp = ... })`
+points at a binary somewhere else.
+
+What arrives: diagnostics from the structural scan — unterminated strings and
+block comments, bracket mismatches, brackets left open at EOF — republished as
+you type and emptied when the buffer is fixed; and hover over R# keywords and
+types, which returns the word under the cursor and its range. Positions are
+UTF-16 code units, matching the `positionEncoding` the server advertises.
 
 `:RsharpBuild` fills the quickfix list directly, so `:copen` and `:cnext` work
 without an `errorformat`; the Vim files still set one for `:make` users.

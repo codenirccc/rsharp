@@ -5,6 +5,7 @@ M.opts = {
   rsc = nil,
   mini = nil,
   test = nil,
+  lsp = nil,
 }
 
 local function repo_root()
@@ -41,6 +42,16 @@ local function test_driver()
     return vim.fn.expand(M.opts.test)
   end
   return first_executable(repo_root(), { 'regress.sh', 'regress.cmd' })
+end
+
+local function lsp_driver()
+  if M.opts.lsp then
+    return vim.fn.expand(M.opts.lsp)
+  end
+  return first_executable(repo_root(), {
+    'work/lsp/build/t_lspsrv.exe',
+    'work/lsp/build/t_lspsrv',
+  })
 end
 
 local function outpath(file)
@@ -131,6 +142,19 @@ local function run(file)
   vim.cmd('startinsert')
 end
 
+local function lsp_start(bufnr)
+  local drv = lsp_driver()
+  if not drv then
+    vim.notify('rsharp: no language server; run work/lsp/run.cmd first', vim.log.levels.ERROR)
+    return
+  end
+  vim.lsp.start({
+    name = 'rsharp',
+    cmd = { drv },
+    root_dir = repo_root(),
+  }, { bufnr = bufnr })
+end
+
 function M.setup(opts)
   M.opts = vim.tbl_extend('force', M.opts, opts or {})
 
@@ -142,6 +166,18 @@ function M.setup(opts)
     pattern = { 'rsx', 'mini' },
     callback = function()
       vim.opt_local.commentstring = '// %s'
+    end,
+  })
+
+  vim.api.nvim_create_autocmd('FileType', {
+    pattern = 'rsx',
+    callback = function(args)
+      if vim.api.nvim_buf_get_name(args.buf) == '' then
+        return
+      end
+      if lsp_driver() then
+        lsp_start(args.buf)
+      end
     end,
   })
 
@@ -163,6 +199,10 @@ function M.setup(opts)
     vim.fn.termopen(spawn({ drv }), { cwd = repo_root() })
     vim.cmd('startinsert')
   end, { desc = 'run the example suite' })
+
+  vim.api.nvim_create_user_command('RsharpLsp', function()
+    lsp_start(vim.api.nvim_get_current_buf())
+  end, { desc = 'attach the rsharp language server to this buffer' })
 
   vim.api.nvim_create_user_command('MiniRun', function()
     local drv = mini_driver()

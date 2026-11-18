@@ -133,7 +133,9 @@ name. The IR file is deleted by the driver after the link.
 VS Code, Vim 8 and Neovim integrations live in `editors/`. All three are
 syntax first and diagnostics second: they read the lines the compilers already
 print, `rsc: <file>: line <n>:<col>: <msg>`, `rsc: <file>: line <n>: <msg>` and
-`rscb: <file>: <msg>`, and nothing else.
+`rscb: <file>: <msg>`, and nothing else. Neovim has a second path that does not
+read compiler output: `:RsharpLsp` attaches the language server from
+`modules/lsp`, covered further down.
 
 | editor | install |
 | --- | --- |
@@ -143,9 +145,9 @@ print, `rsc: <file>: line <n>:<col>: <msg>`, `rsc: <file>: line <n>: <msg>` and
 
 The repo also ships `.vscode/tasks.json`, so `Ctrl+Shift+B` builds the focused
 file with the problem matcher already wired up — no extension required. Vim and
-Neovim get `:RsharpBuild` and `:RsharpRun`; Neovim also gets `:RsharpTest` and
-`:MiniRun`. Details, including `g:rsharp_rsc` and the `setup()` options, are in
-`editors/README.md`.
+Neovim get `:RsharpBuild` and `:RsharpRun`; Neovim also gets `:RsharpTest`,
+`:MiniRun` and `:RsharpLsp`. Details, including `g:rsharp_rsc` and the
+`setup()` options, are in `editors/README.md`.
 
 ## The language
 
@@ -1755,6 +1757,83 @@ C ABI call path are both exercised against a live host. Then `fnptr suite: ok`.
 three fields, so a closed host reports not ready. Windows-only: the module looks
 for `hostfxr.dll` and the search list is Win32 paths. On macOS the same sequence
 would need `libhostfxr.dylib` and a `/usr/local/share/dotnet` root.
+
+## The language server
+
+`modules/lsp/lsp.rsx` is a language server in plain R#: a JSON parser, the
+`Content-Length` framing, the open-document store, a structural scanner and the
+handlers, all in one file with no third-party code. Only the transport is
+platform code. `lsp_win.rsx` reads and writes through kernel32
+`GetStdHandle`/`ReadFile`/`WriteFile`; `lsp_mac.rsx` uses libSystem `read` and
+`write`. Each platform file includes `lsp.rsx` first, so a caller includes just
+the one it needs:
+
+```rsx
+include "modules/lsp/lsp_win.rsx";
+
+fn main() -> i32 {
+    return lsp_main();
+}
+```
+
+Build it like anything else:
+
+```
+rsc.cmd work\lsp\t_lspsrv.rsx work\lsp\build\t_lspsrv.exe
+```
+
+`initialize` answers with `textDocumentSync` at change `1` (full text),
+`hoverProvider`, `positionEncoding` `utf-16`, and `serverInfo` `rsharp 1.2`.
+Position encoding is stated rather than negotiated: columns count UTF-16 code
+units, so a code point past `0xFFFF` is two columns wide, which is what the
+scanner and hover both report.
+
+Messages are framed by `Content-Length: <n>` and a blank line. The parser finds
+the blank line first, then the header; the header name is matched case
+insensitively and the value is capped at 32 MiB. The body is copied out of the
+read buffer into its own allocation before it is parsed, so a frame can be any
+size the cap allows and the reader never hands a handler a pointer into a buffer
+that is about to move. A header that will not parse, or a body cut short before
+its stated length, stops the loop with rc 1.
+
+JSON is a pool of nodes rather than a tree of pointers: `{` and `[` append
+children to a linked list, strings decode to their own NUL-terminated UTF-8
+buffer, and numbers keep the source slice, so an `id` of `-12` comes back as
+`-12` without a float round trip. `\u` escapes go through surrogate pairs to
+four-byte UTF-8, nesting stops at 64 levels, and anything malformed produces
+`-32700` with `"id":null` rather than a half-parsed request.
+
+Diagnostics are structural, not semantic: an unterminated string literal, an
+unterminated block comment, a mismatched closer, an unmatched closer, and a
+bracket still open at EOF. `//` and `/* */` are skipped, CRLF and LF both count
+as one line, and the bracket stack holds 128 entries. A mismatch reports and
+pops one level, which is why `let x = (1;` followed by `}` reports `mismatched
+'}'` on the brace and `unclosed '{'` on the function — the `}` closed the `(`.
+The list is capped at 64 and republished on open and change; closing a document
+publishes an empty list.
+
+Hover takes the word under the cursor — `[A-Za-z0-9_]` in both directions — and
+looks it up in a table of 36 R# keywords and types, so `fn`, `match`, `ptr`,
+`Box` and `u64` each get a line. A hit returns `plaintext` contents and the range
+of the word; a miss returns `result: null`.
+
+`shutdown` and `exit` follow the spec: rc 0 after the pair. A client that
+disappears without either is not an error — stdin closing is rc 0. `exit`
+arriving with no `shutdown` is rc 1, and so is a frame the server cannot read.
+An unknown request gets `-32601` with `method not found: <name>`; notifications
+that name an unknown method are ignored, since there is no id to answer.
+
+`work\lsp\run.cmd` prints `lsp suite: ok` and `lsp pipe: ok`. The first covers
+the parser (`\u00e9`, a surrogate pair, a `]` where a value belongs), the header
+bytes `Content-Length: 2\r\n\r\n`, a two-frame reader, five scan cases plus a
+clean input, and the exact bytes of a five-message session. The second feeds the
+same session through `t_lspsrv.exe` over a real pipe and compares the transcript
+with `fc /b`, so the capture path and the stdio path are held to the same bytes.
+The same script cross-builds `t_mac.rsx` for macOS to keep `lsp_mac.rsx`
+compiling; that image is not run on this host.
+
+Neovim gets `:RsharpLsp` and auto-attach from `editors/neovim`, wired in
+`editors/README.md`.
 
 ## The math module
 

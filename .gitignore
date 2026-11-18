@@ -35,5 +35,6 @@ __pycache__/
 *.pyc
 editors/vscode/*.vsix
 /work/dotnet/build/
+/work/lsp/build/
 /work/dotnet/fixture/bin/
 /work/dotnet/fixture/obj/
