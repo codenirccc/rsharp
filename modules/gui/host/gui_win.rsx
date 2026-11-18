@@ -179,7 +179,7 @@ fn gw_tick(gw: ptr<GWin>) {
     }
 }
 
-fn gui_win_proc(h: ptr<u8>, m: u32, wp: u64, lp: i64) -> i64 {
+extern "C" fn gui_win_proc(h: ptr<u8>, m: u32, wp: u64, lp: i64) -> i64 {
     let raw: i64 = GetWindowLongPtrA(h, GW_USERDATA);
     if (m == GW_WM_PAINT) {
         var ps: GPaint = zero(GPaint);

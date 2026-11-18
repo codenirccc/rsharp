@@ -162,6 +162,7 @@ pub struct FnDef {
     pub params: Vec<(String, Type)>,
     pub ret: Type,
     pub is_async: bool,
+    pub c_abi: bool,
     pub body: Vec<Stmt>,
 }
 

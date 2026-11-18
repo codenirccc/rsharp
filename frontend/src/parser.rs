@@ -386,7 +386,17 @@ impl Parser {
             } else if self.eat_kw("enum") {
                 p.enums.push(self.parse_enum()?);
             } else if self.eat_kw("extern") {
-                p.externs.extend(self.parse_extern()?);
+                if matches!(self.peek(), Tok::Str(s) if s == "C")
+                    && matches!(self.peek_at(1), Some(Tok::Ident(k)) if k == "fn")
+                {
+                    self.bump();
+                    self.bump();
+                    let mut f = self.parse_fn()?;
+                    f.c_abi = true;
+                    p.fns.push(f);
+                } else {
+                    p.externs.extend(self.parse_extern()?);
+                }
             } else if self.eat_kw("static") {
                 p.globals.push(self.parse_static()?);
             } else if self.eat_kw("mod") {
@@ -692,7 +702,7 @@ impl Parser {
         let ret = if self.eat_sym("->") { self.parse_type()? } else { Type::Void };
         let body = self.parse_body()?;
         self.tparams = outer;
-        Ok(FnDef { name, tparams, params, ret, is_async, body })
+        Ok(FnDef { name, tparams, params, ret, is_async, c_abi: false, body })
     }
 
     fn parse_block(&mut self) -> Result<Vec<Stmt>, String> {
@@ -1388,7 +1398,7 @@ impl Parser {
         let body = self.parse_block()?;
         let name = format!("__clo{}", self.clo);
         self.clo += 1;
-        self.lifts.push(FnDef { name: name.clone(), tparams: Vec::new(), params, ret, is_async: false, body });
+        self.lifts.push(FnDef { name: name.clone(), tparams: Vec::new(), params, ret, is_async: false, c_abi: false, body });
         Ok(Expr::FnRef(name))
     }
 

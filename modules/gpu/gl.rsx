@@ -115,7 +115,7 @@ struct GLx {
     h: i32
 }
 
-fn gw_proc(h: ptr<u8>, m: u32, wp: u64, lp: i64) -> i64 {
+extern "C" fn gw_proc(h: ptr<u8>, m: u32, wp: u64, lp: i64) -> i64 {
     if (m == GW_WM_CLOSE || m == GW_WM_DESTROY) {
         return 0;
     }

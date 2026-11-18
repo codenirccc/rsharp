@@ -297,7 +297,7 @@ fn gm_mouse_xy(gm: ptr<GMac>, ev: ptr<u8>, px: ptr<i64>, py: ptr<i64>, down: i32
     return 0;
 }
 
-fn gm_imp_mouse_down(sv: ptr<u8>, cm: ptr<u8>, ev: ptr<u8>) {
+extern "C" fn gm_imp_mouse_down(sv: ptr<u8>, cm: ptr<u8>, ev: ptr<u8>) {
     let gm: ptr<GMac> = gm_state(sv);
     if ((gm as i64) == 0) {
         return;
@@ -315,7 +315,7 @@ fn gm_imp_mouse_down(sv: ptr<u8>, cm: ptr<u8>, ev: ptr<u8>) {
     }
 }
 
-fn gm_imp_mouse_up(sv: ptr<u8>, cm: ptr<u8>, ev: ptr<u8>) {
+extern "C" fn gm_imp_mouse_up(sv: ptr<u8>, cm: ptr<u8>, ev: ptr<u8>) {
     let gm: ptr<GMac> = gm_state(sv);
     if ((gm as i64) == 0) {
         return;
@@ -335,7 +335,7 @@ fn gm_imp_mouse_up(sv: ptr<u8>, cm: ptr<u8>, ev: ptr<u8>) {
     gm_blit(gm);
 }
 
-fn gm_imp_mouse_move(sv: ptr<u8>, cm: ptr<u8>, ev: ptr<u8>) {
+extern "C" fn gm_imp_mouse_move(sv: ptr<u8>, cm: ptr<u8>, ev: ptr<u8>) {
     let gm: ptr<GMac> = gm_state(sv);
     if ((gm as i64) == 0) {
         return;
@@ -353,7 +353,7 @@ fn gm_imp_mouse_move(sv: ptr<u8>, cm: ptr<u8>, ev: ptr<u8>) {
     }
 }
 
-fn gm_imp_scroll(sv: ptr<u8>, cm: ptr<u8>, ev: ptr<u8>) {
+extern "C" fn gm_imp_scroll(sv: ptr<u8>, cm: ptr<u8>, ev: ptr<u8>) {
     let gm: ptr<GMac> = gm_state(sv);
     if ((gm as i64) == 0) {
         return;
@@ -376,7 +376,7 @@ fn gm_imp_scroll(sv: ptr<u8>, cm: ptr<u8>, ev: ptr<u8>) {
     gm_blit(gm);
 }
 
-fn gm_imp_key_down(sv: ptr<u8>, cm: ptr<u8>, ev: ptr<u8>) {
+extern "C" fn gm_imp_key_down(sv: ptr<u8>, cm: ptr<u8>, ev: ptr<u8>) {
     let gm: ptr<GMac> = gm_state(sv);
     if ((gm as i64) == 0) {
         return;
@@ -410,7 +410,7 @@ fn gm_imp_key_down(sv: ptr<u8>, cm: ptr<u8>, ev: ptr<u8>) {
     }
 }
 
-fn gm_imp_tick(sv: ptr<u8>, cm: ptr<u8>, timer: ptr<u8>) {
+extern "C" fn gm_imp_tick(sv: ptr<u8>, cm: ptr<u8>, timer: ptr<u8>) {
     let gm: ptr<GMac> = gm_state(sv);
     if ((gm as i64) == 0) {
         return;

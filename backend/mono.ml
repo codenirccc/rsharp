@@ -71,6 +71,7 @@ let instantiate (f : fn_def) (name : string) (subst : (string * typ) list) : fn_
     fparams = List.map (fun (n, t) -> (n, subst_typ subst t)) f.fparams;
     fret = subst_typ subst f.fret;
     fasync = f.fasync;
+    fc_c_abi = f.fc_c_abi;
     fbody = List.map (sub_s subst) f.fbody;
   }
 

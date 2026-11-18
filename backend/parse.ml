@@ -279,6 +279,7 @@ let program_of (s : Sexp.t) : program =
             :: !externs
       | Sexp.List (Sexp.Atom "fn" :: Sexp.Atom name :: parts) ->
           let params = ref [] and ret = ref TVoid and body = ref [] and asy = ref false in
+          let c_abi = ref false in
           let generics = ref [] in
           List.iter
             (fun p ->
@@ -287,6 +288,7 @@ let program_of (s : Sexp.t) : program =
                   params := (n, typ_of env t) :: !params
               | Sexp.List [ Sexp.Atom "ret"; t ] -> ret := typ_of env t
               | Sexp.List [ Sexp.Atom "async" ] -> asy := true
+              | Sexp.List [ Sexp.Atom "c-abi" ] -> c_abi := true
               | Sexp.List (Sexp.Atom "generic" :: Sexp.Atom g :: rest) ->
 
                   generics := !generics @ (g :: List.map atom rest)
@@ -301,6 +303,7 @@ let program_of (s : Sexp.t) : program =
               fparams = List.rev !params;
               fret = !ret;
               fasync = !asy;
+              fc_c_abi = !c_abi;
               fbody = !body;
             }
             :: !fns

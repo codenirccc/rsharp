@@ -591,6 +591,9 @@ pub fn emit_program(p: &Program, hint: usize) -> String {
         if f.is_async {
             s.push_str("    (async)\n");
         }
+        if f.c_abi {
+            s.push_str("    (c-abi)\n");
+        }
         s.push_str("    (body\n");
         emit_block(&f.body, 3, &mut s);
         s.push_str("    )\n");

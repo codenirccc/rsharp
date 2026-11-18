@@ -188,6 +188,7 @@ type fn_def = {
   fparams : (string * typ) list;
   fret : typ;
   fasync : bool;
+  fc_c_abi : bool;
   fbody : stmt list;
 }
 

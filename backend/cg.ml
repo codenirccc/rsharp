@@ -19,6 +19,7 @@ type info = {
   mutable busy : string list;
   funcs : (string, typ list * typ * bool) Hashtbl.t;
   externs : (string, unit) Hashtbl.t;
+  c_abi : (string, unit) Hashtbl.t;
 }
 
 let rec peel (t : typ) =
@@ -871,21 +872,21 @@ and call g name args ret_ty =
       let slot = scratch g 8 in
       X.load64 g.x X.rax X.rbp off;
       X.store64 g.x X.rax X.rbp slot;
-      emit_call g args ret_ty false (`Slot slot)
+      emit_call g args ret_ty false false (`Slot slot)
   | _ ->
       let variadic =
         match Hashtbl.find_opt g.info.funcs name with Some (_, _, v) -> v | None -> false
       in
-      if Hashtbl.mem g.info.externs name then emit_call g args ret_ty variadic (`Ext name)
-      else emit_call g args ret_ty variadic (`Local name)
+      if Hashtbl.mem g.info.externs name then emit_call g args ret_ty variadic true (`Ext name)
+      else emit_call g args ret_ty variadic (Hashtbl.mem g.info.c_abi name) (`Local name)
 
 and callv g f args ret_ty =
   let slot = scratch g 8 in
   scalar g f;
   X.store64 g.x X.rax X.rbp slot;
-  emit_call g args ret_ty false (`Slot slot)
+  emit_call g args ret_ty false false (`Slot slot)
 
-and emit_call g args ret_ty variadic tail =
+and emit_call g args ret_ty variadic use_c tail =
   let sret = is_agg ret_ty in
   let res = if sret then scratch g (max 1 (size_of g.info ret_ty)) else 0 in
   let staged =
@@ -913,34 +914,65 @@ and emit_call g args ret_ty variadic tail =
   in
   let nvec = ref 0 in
   let reserved = ref 0 in
-  (match g.tgt.Target.abi with
-  | Target.Win64 ->
+  (if not use_c then
+     let regs = [| X.rdi; X.rsi; X.r10; X.r11; X.r12; X.r13; X.r14; X.r15 |] in
+     let ni = ref (if sret then 1 else 0) and nf = ref 0 and ns = ref 0 in
+     let stack_arg ty t =
+       let d = 8 * !ns in
+       incr ns;
+       if d + 8 > g.out then g.out <- d + 8;
+       if is_float ty then begin
+         (if ty = TF32 then X.movss_load else X.movsd_load) g.x 11 X.rbp t;
+         (if ty = TF32 then X.movss_store else X.movsd_store) g.x 11 X.rsp d
+       end
+       else begin
+         X.load64 g.x X.rax X.rbp t;
+         X.store64 g.x X.rax X.rsp d
+       end
+     in
+     List.iter
+       (fun (ty, t) ->
+         if is_float ty then
+           if !nf < 8 then begin
+             (if ty = TF32 then X.movss_load else X.movsd_load) g.x !nf X.rbp t;
+             incr nf
+           end
+           else stack_arg ty t
+         else if !ni < 8 then begin
+           X.load64 g.x regs.(!ni) X.rbp t;
+           incr ni
+         end
+         else stack_arg ty t)
+       staged;
+     reserved := !nf
+   else match g.tgt.Target.abi with
+   | Target.Win64 ->
       let base = if sret then 1 else 0 in
       List.iteri
         (fun i (ty, t) ->
           let p = i + base in
           if p < 4 then begin
-            if is_float ty then begin
-              (if ty = TF32 then X.movss_load else X.movsd_load) g.x p X.rbp t;
-              incr nvec;
-              if variadic then X.load64 g.x (gpr g).(p) X.rbp t
-            end
-            else X.load64 g.x (gpr g).(p) X.rbp t
-          end
-          else begin
-            let d = 32 + (8 * (p - 4)) in
-            if d + 8 > g.out then g.out <- d + 8;
-            if is_float ty then begin
-              (if ty = TF32 then X.movss_load else X.movsd_load) g.x 4 X.rbp t;
-              (if ty = TF32 then X.movss_store else X.movsd_store) g.x 4 X.rsp d
-            end
-            else begin
-              X.load64 g.x X.rax X.rbp t;
-              X.store64 g.x X.rax X.rsp d
-            end
-          end)
+             if is_float ty then begin
+               (if ty = TF32 then X.movss_load else X.movsd_load) g.x p X.rbp t;
+               incr nvec;
+               if variadic then X.load64 g.x (gpr g).(p) X.rbp t
+             end
+             else X.load64 g.x (gpr g).(p) X.rbp t
+           end
+           else begin
+             let d = 32 + (8 * (p - 4)) in
+             if d + 8 > g.out then g.out <- d + 8;
+             if is_float ty then begin
+               (if ty = TF32 then X.movss_load else X.movsd_load) g.x 4 X.rbp t;
+               (if ty = TF32 then X.movss_store else X.movsd_store) g.x 4 X.rsp d
+             end
+             else begin
+               X.load64 g.x X.rax X.rbp t;
+               X.store64 g.x X.rax X.rsp d
+             end
+           end)
         staged
-  | Target.SysV ->
+   | Target.SysV ->
       let ni = ref (if sret then 1 else 0) and nf = ref 0 and ns = ref 0 in
       let stack_arg ty t =
         let d = 8 * !ns in
@@ -970,7 +1002,9 @@ and emit_call g args ret_ty variadic tail =
           else stack_arg ty t)
         staged;
       reserved := !nf);
-  if sret then X.lea g.x (Target.sret_reg g.tgt) X.rbp res;
+  if sret then
+    (if use_c then X.lea g.x (Target.sret_reg g.tgt) X.rbp res
+     else X.lea g.x X.rdi X.rbp res);
   (match tail with
   | `Ext name ->
       if variadic then
@@ -999,7 +1033,7 @@ and poll_task g a =
   let t, p = task_ptr g a in
   push_scope g;
   bind g "$task" t (TTask TVoid);
-  emit_call g [ { node = EVar "$task"; ty = TTask TVoid } ] TI64 false (`Slot p);
+  emit_call g [ { node = EVar "$task"; ty = TTask TVoid } ] TI64 false false (`Slot p);
   pop_scope g
 
 and await_block g a =
@@ -1008,7 +1042,7 @@ and await_block g a =
   bind g "$task" t (TTask TVoid);
   let lloop = new_lbl g in
   place g lloop;
-  emit_call g [ { node = EVar "$task"; ty = TTask TVoid } ] TI64 false (`Slot p);
+  emit_call g [ { node = EVar "$task"; ty = TTask TVoid } ] TI64 false false (`Slot p);
   X.test_rr g.x X.rax X.rax;
   let ldone = new_lbl g in
   jcc_to g 5 ldone;
@@ -1385,12 +1419,43 @@ let open_fn g ~name ~ret =
 let bind_params g ~ret (f : fn_def) =
   let sret = is_agg ret in
   let sret_slot = if sret then take g 8 else 0 in
-  if sret then X.store64 g.x (Target.sret_reg g.tgt) X.rbp sret_slot;
+  if sret then
+    (if f.fc_c_abi then X.store64 g.x (Target.sret_reg g.tgt) X.rbp sret_slot
+     else X.store64 g.x X.rdi X.rbp sret_slot);
   g.sret_slot <- sret_slot;
   let base = if sret then 1 else 0 in
   push_scope g;
   let homes =
-    match g.tgt.Target.abi with
+    if not f.fc_c_abi then
+      let regs = [| X.rdi; X.rsi; X.r10; X.r11; X.r12; X.r13; X.r14; X.r15 |] in
+      let ni = ref base and nf = ref 0 and ns = ref 0 in
+      List.map
+        (fun (name, ty) ->
+          let off = take g (max 8 (size_of g.info ty)) in
+          if is_float ty then
+            if !nf < 8 then begin
+              (if ty = TF32 then X.movss_store else X.movsd_store) g.x !nf X.rbp off;
+              incr nf
+            end
+            else begin
+              let d = 16 + (8 * !ns) in
+              incr ns;
+              (if ty = TF32 then X.movss_load else X.movsd_load) g.x 11 X.rbp d;
+              (if ty = TF32 then X.movss_store else X.movsd_store) g.x 11 X.rbp off
+            end
+          else if !ni < 8 then begin
+            X.store64 g.x regs.(!ni) X.rbp off;
+            incr ni
+          end
+          else begin
+            let d = 16 + (8 * !ns) in
+            incr ns;
+            X.load64 g.x X.rax X.rbp d;
+            X.store64 g.x X.rax X.rbp off
+          end;
+          (name, ty, off))
+        f.fparams
+    else match g.tgt.Target.abi with
     | Target.Win64 ->
         let rec spill i = function
           | [] -> []
@@ -1519,7 +1584,7 @@ let gen_async g (f : fn_def) =
   let probe = open_fn g ~name:poll_name ~ret:TI64 in
   push_scope g;
   let tp = take g 8 in
-  X.store64 g.x (gpr g).(0) X.rbp tp;
+  X.store64 g.x X.rdi X.rbp tp;
   g.ret_lbl <- new_lbl g;
   X.load64 g.x X.rax X.rbp tp;
   X.load64 g.x X.rcx X.rax 0;
@@ -1569,6 +1634,7 @@ let compile ~unchecked (tgt : Target.t) (p : program) : image =
       busy = [];
       funcs = Hashtbl.create 16;
       externs = Hashtbl.create 16;
+      c_abi = Hashtbl.create 16;
     }
   in
   List.iter
@@ -1589,6 +1655,7 @@ let compile ~unchecked (tgt : Target.t) (p : program) : image =
     p.externs;
   List.iter
     (fun (f : fn_def) ->
+      if f.fc_c_abi then Hashtbl.replace info.c_abi f.fname ();
       Hashtbl.replace info.funcs f.fname (List.map snd f.fparams, f.fret, false))
     p.fns;
   let g =

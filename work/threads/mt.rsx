@@ -21,7 +21,7 @@ fn square_sum(lo: i64, hi: i64) -> i64 {
     return sum;
 }
 
-fn mt_worker(p: ptr<u8>) -> u32 {
+extern "C" fn mt_worker(p: ptr<u8>) -> u32 {
     unsafe {
         let q: ptr<MtParam> = p as ptr<MtParam>;
         let lo: i64 = q.lo;

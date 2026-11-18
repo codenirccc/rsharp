@@ -701,9 +701,30 @@ on `examples/generics.rsx`.
 
 Target is x86-64. The register assignment comes from `target.ml`, the frame and
 the spill logic ask it, and everything below the argument marshalling is shared
-between the two ABIs.
+between every ABI the back end knows about.
 
-Windows, Microsoft calling convention: integer and pointer arguments go in
+R# to R# calls do not use either platform C ABI — they use the R# ABI, which is
+the same on Windows and macOS and is deliberately unlike either native one.
+Integer and pointer arguments go in `RDI RSI R10 R11 R12 R13 R14 R15` — eight
+slots, four more than Win64, two more than SysV. Float arguments go in
+`XMM0`–`XMM7`, all shared with integers — the two classes do not consume each
+other's budgets. Aggregates beyond eight bytes use a hidden `RDI` pointer,
+which consumes the `RDI` slot and shifts everything up one. Overflow goes on
+the stack at `[rsp]` with no shadow area. Aggregate returns use a hidden `RDI`;
+plain integers and floats return in `RAX` and `XMM0` as usual.
+
+The platform C ABIs (Microsoft on Windows, System V on macOS) are still what
+`extern "..."` declarations use, and `extern "C" fn` — a function definition
+rather than an import — pins that function to the platform C ABI as well. The
+split exists because plugins call into R# from outside: a WNDPROC, an Objective-C
+method implementation, or a thread body handed to `CreateThread`. Those functions
+must be called the way the outside world calls them, so the marker exists and
+the six OS callbacks in the tree carry it: `gui_win.rsx` and `gl.rsx`
+(`gui_win_proc`, `gw_proc`), `gui_mac.rsx` (the `gm_imp_*` AppKit selectors) and
+`work/threads/mt.rsx` (`mt_worker`).
+
+Windows, Microsoft calling convention (`extern "C"` on Windows, and every
+`extern "..."` import): integer and pointer arguments go in
 `RCX RDX R8 R9`, float arguments in `XMM0`–`XMM3`, positional — the fifth and
 later arguments go on the stack at `[rsp+32]` and up, behind 32 bytes of shadow
 space. A struct argument is passed as a pointer to a copy and the callee copies
@@ -711,7 +732,8 @@ it into its own frame, so mutation inside a function does not reach the caller.
 A struct return uses a hidden pointer in `RCX`, which shifts the register
 positions of everything else by one.
 
-macOS, System V: integer and pointer arguments go in `RDI RSI RDX RCX R8 R9`,
+macOS, System V calling convention (`extern "C"` on macOS, and every
+`extern "..."` import): integer and pointer arguments go in `RDI RSI RDX RCX R8 R9`,
 float arguments in `XMM0`–`XMM7`, and the two files have independent counters —
 an all-float call fills `XMM0`–`XMM7` and never touches the integer registers,
 where Win64 would have run out at four. The seventh integer and ninth float go
