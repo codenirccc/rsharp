@@ -1,4 +1,5 @@
 include "build.rsx";
+include "pkg.rsx";
 
 fn main() -> i32 {
     var c: Ctx;
@@ -35,8 +36,8 @@ fn main() -> i32 {
     var ov_out: i64 = 0;
     var ov_tgt: i64 = 0;
     var ov_man: i64 = 0;
-    var pos: [i64; 4];
-    var npos: i64 = 0;
+    var ov_repo: i64 = 0;
+    c.npos = 0;
     var i: i64 = 0;
     while (i < c.nargs) {
         let a: i64 = c.args[i];
@@ -61,13 +62,18 @@ fn main() -> i32 {
             if (i < c.nargs) {
                 ov_man = c.args[i];
             }
-        } else if (npos < 4) {
-            pos[npos] = a;
-            npos += 1;
+        } else if (sq(ap, "--repo") == 1) {
+            i += 1;
+            if (i < c.nargs) {
+                ov_repo = c.args[i];
+            }
+        } else if (c.npos < 8) {
+            c.pos[c.npos] = a;
+            c.npos += 1;
         }
         i += 1;
     }
-    if (npos == 0) {
+    if (c.npos == 0) {
         usage();
         return 2;
     }
@@ -75,10 +81,26 @@ fn main() -> i32 {
         c.man = ov_man;
         c.man_def = 0;
     }
-    let cmd: ptr<u8> = ob(c.bp, pos[0]);
+    let cmd: ptr<u8> = ob(c.bp, c.pos[0]);
     if (sq(cmd, "help") == 1 || sq(cmd, "--help") == 1 || sq(cmd, "-h") == 1) {
         usage();
         return 0;
+    }
+    if (sq(cmd, "install") == 1 || sq(cmd, "remove") == 1 || sq(cmd, "packages") == 1) {
+        if (c.win == 1) {
+            system("if not exist .rmake mkdir .rmake");
+        } else {
+            system("mkdir -p .rmake");
+        }
+        var prc: i32 = 0;
+        if (sq(cmd, "install") == 1) {
+            prc = pkg_install(&mut c, ov_repo);
+        } else if (sq(cmd, "remove") == 1) {
+            prc = pkg_remove(&mut c);
+        } else {
+            prc = pkg_list(&mut c);
+        }
+        return prc;
     }
     let lr: i32 = load_manifest(&mut c);
     if (lr != 1) {
@@ -137,11 +159,11 @@ fn main() -> i32 {
         return 0;
     }
     if (sq(cmd, "run") == 1) {
-        if (npos < 2) {
+        if (c.npos < 2) {
             printf("rmake: run needs a target name\n");
             return 2;
         }
-        if (run_one(&mut c, pos[1]) == 0) {
+        if (run_one(&mut c, c.pos[1]) == 0) {
             return 1;
         }
         return 0;

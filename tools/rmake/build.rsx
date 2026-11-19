@@ -455,10 +455,16 @@ fn usage() {
     printf("       run NAME   build NAME and its deps, then run it\n");
     printf("       clean      remove every artifact and stamp\n");
     printf("       list       show targets and their dependencies\n");
+    printf("       install P  fetch, verify, and unpack package P into lib/\n");
+    printf("       remove P   delete package P and its files\n");
+    printf("       packages   list installed packages\n");
     printf("options:\n");
     printf("       --rsc PATH       rsc launcher (default: rsc on PATH)\n");
     printf("       --manifest PATH  build file (default: RMakefile)\n");
     printf("       --outdir DIR     artifact directory (default: build)\n");
     printf("       --tgt PLATFORM   build for windows, macos, linux, or vm\n");
     printf("                        (targets with their own tgt keep it)\n");
+    printf("       --repo URL       package repository\n");
+    printf("                        (default: https://www.plaguevm.publicvm.com/basicRresp)\n");
+    printf("                        RMAKE_REPO sets the same thing\n");
 }

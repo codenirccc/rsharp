@@ -1379,6 +1379,131 @@ host; `cdc build -t macos` writes a Mach-O with no extension, and the same
 - No signatures. The lockfile hash detects drift between installs; it does not
   authenticate the registry.
 
+## rmake
+
+`tools/rmake/` is a build tool written in R#, and it is built by the compiler it
+drives:
+
+```
+rsc.cmd tools\rmake\main.rsx build\rmake.exe
+```
+
+`RMakefile` in the repository root is its own build file: sixteen targets over
+the examples, the cross-target images and the VM builds, two of them `[test]`.
+
+The format is line-oriented — `key value`, `#` for a comment, nothing nested.
+Three settings at the top, then one section per target:
+
+```
+outdir build
+
+[exe hello]
+src examples/hello.rsx
+
+[test smoke]
+src examples/hello.rsx
+deps hello
+```
+
+Top-level keys are `outdir`, `rsc` and `manifest`. Inside a section: `src`,
+`out`, `tgt`, `deps`, `assets`. `src` is required; `out` defaults to
+`<outdir>/<name>`, with `.exe` on Windows and `.rvm` for the VM. `deps` names
+other targets, which build first — a cycle is an error. `assets` adds files to
+the change check without handing them to the compiler.
+
+`tgt` is `windows`, `macos`, `linux` or `vm`. A target without one builds for
+the host, and `--tgt PLATFORM` overrides every target that did not name its own,
+so `rmake build --tgt macos` writes Mach-O images from a Windows box.
+
+The incremental check is a hash, not a timestamp. FNV-1a runs over the platform,
+the output path, then every source path and every source byte reachable through
+`include`, then the assets; the low eight bytes go to `.rmake\<name>.stamp`, and
+a target rebuilds when they differ or the output is missing. Touching a file
+changes nothing. Changing one byte inside a nested include rebuilds everything
+that pulls it in, because the chain walked is the resolver's, not a glob over
+the directory.
+
+Commands are `build`, `rebuild`, `test`, `run NAME`, `clean`, `list`, `help`,
+and the three package commands below. Options go anywhere after the command:
+`--rsc PATH`, `--manifest PATH`, `--outdir DIR`, `--tgt PLATFORM`,
+`--repo URL`.
+
+Arguments arrive through `.rmake\cmd.txt`, one per line, because `rmake.cmd` and
+`rmake.sh` write that file and then call the binary; `RMAKE_CMD` names the same
+file. The launchers prepend `--rsc` pointing at their own `rsc.cmd` or `rsc.sh`,
+so a checkout works with nothing on `PATH`. When a command finds no build file
+in the current directory, the launcher walks up one level at a time until it
+does, which is what makes `rmake build` work from `work\http\`.
+
+### Packages
+
+`rmake install` puts R# source into a project: one command, a digest check, and
+files under `lib/`.
+
+```
+$ rmake install hmac
+  get   rt 1.0.0
+  use   include "rt.rsx";
+  get   sha256 1.0.0
+  use   include "sha256.rsx";
+  get   hmac 1.0.0
+  use   include "hmac.rsx";
+rmake: 3 packages installed
+```
+
+The `use` lines print in dependency order and are the include paths. Packages
+land flat in `lib/` — `lib\rt.rsx`, `lib\sha256.rsx`, `lib\hmac.rsx` — because
+the resolver looks for `<dir>/lib/<name>` on the way up from the including file,
+and a nested `lib\<package>\` would break the `include "rt.rsx"` inside
+`der.rsx`. One file per package, one name.
+
+`install` resolves dependencies from the index, fetches each archive, checks its
+SHA-256 and only then unpacks it; a mismatch deletes the download and installs
+nothing. `name@1.0.0` pins a version, several names install in one run, and
+re-installing what is already recorded prints `ok` and touches nothing.
+
+`packages` lists what is installed. `remove` deletes exactly the files recorded
+for that package, so one that later grows a second file still removes clean. The
+record is `.rmake\pkgs`, one line per package:
+
+```
+hmac 1.0.0 lib/hmac.rsx
+```
+
+Package commands run before the build file is loaded, so they work in a
+directory with no `RMakefile`, and they act on the current directory rather than
+walking upward.
+
+### The index and the archive
+
+The default repository is `https://www.plaguevm.publicvm.com/basicRresp`.
+`--repo URL` or `RMAKE_REPO` points somewhere else, and a plain directory path
+works there too: local repositories are copied, remote ones fetched with
+`curl`.
+
+`index.txt` is one line per package, seven fields, no headings:
+
+```
+hmac 1.0.0 3900 b30f1a289a316e6358ad41f3ed2afa34499e0423dc2630b45fa1f082a740dd85 hmac-1.0.0.rsp rt,sha256 hmac.rsx
+```
+
+The fields are name, version, archive size, SHA-256, archive file name,
+comma-separated dependencies with `-` for none, and the include path. An archive
+is `rspkg 1` on the first line, then for each file a header naming the path and
+the exact byte count, those bytes, and one newline:
+
+```
+rspkg 1
+file lib/hmac.rsx 3868
+const HMAC_BLOCK: i64 = 64;
+...
+```
+
+`rmake` unpacks that itself, with no tar, gzip or JSON parser, and rejects any
+path that leaves `lib/` or carries a backslash, a drive colon or a `..`
+segment. `tools/pkg/mk.ps1` generates the fifteen archives and the index from
+`modules\`, rejecting two packages that share a leaf name.
+
 ## The HTTP stack
 
 `modules/http/` is a working HTTP client written in plain R#: HTTP/1.1, HTTP/2,
