@@ -5,14 +5,21 @@ set "FRONT=%HERE%frontend\target\release\rsc.exe"
 set "BACK=%HERE%backend\rscb.exe"
 
 set "TGT=windows"
+set "VM="
+if /i "%~1"=="--vm" (
+    set "VM=1"
+    shift
+)
 if /i "%~1"=="-t" (
-    set "TGT=%~2"
-    shift
-    shift
+    if not defined VM (
+        set "TGT=%~2"
+        shift
+        shift
+    )
 )
 
 if "%~1"=="" (
-    echo usage: rsc [-t windows^|macos] ^<file.rsx^> [out]
+    echo usage: rsc [--vm] [-t windows^|macos^|linux] ^<file.rsx^> [out]
     exit /b 2
 )
 
@@ -31,7 +38,13 @@ for %%F in ("%IN%") do (
     set "STEM=%%~nF"
 )
 
-if "%TGT%"=="macos" (set "EXT=") else (set "EXT=.exe")
+if defined VM (
+    set "EXT=.rvm"
+) else if /i "%TGT%"=="windows" (
+    set "EXT=.exe"
+) else (
+    set "EXT="
+)
 if "%~2"=="" (set "OUT=%DIR%%STEM%%EXT%") else (set "OUT=%~f2")
 set "IR=%DIR%%STEM%.rsi"
 
@@ -40,7 +53,11 @@ for %%D in ("%OUT%") do if not exist "%%~dpD" mkdir "%%~dpD" >nul 2>&1
 "%FRONT%" "%IN%" -o "%IR%"
 if errorlevel 1 exit /b 1
 
-"%BACK%" "%IR%" -o "%OUT%" -s "%IN%" -t "%TGT%"
+if defined VM (
+    "%BACK%" "%IR%" --vm -o "%OUT%" -s "%IN%"
+) else (
+    "%BACK%" "%IR%" -o "%OUT%" -s "%IN%" -t "%TGT%"
+)
 if errorlevel 1 exit /b 1
 
 del "%IR%" >nul 2>&1

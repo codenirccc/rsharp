@@ -10,23 +10,30 @@ back="$here/backend/rscb"
 
 case "$(uname -s)" in
   MINGW* | MSYS* | CYGWIN*) host=windows ;;
-  *) host=macos ;;
+  Darwin) host=macos ;;
+  *) host=linux ;;
 esac
 
 tgt="${RSC_TARGET:-$host}"
-if [ "${1:-}" = "-t" ]; then
+vm=
+if [ "${1:-}" = "--vm" ]; then
+  vm=1
+  shift
+fi
+if [ "${1:-}" = "-t" ] && [ -z "$vm" ]; then
   tgt="${2:-}"
   shift 2
 fi
 
 [ -x "$front" ] || { echo "rsc: front end not built - run ./build.sh" >&2; exit 1; }
 [ -x "$back" ] || { echo "rsc: back end not built (backend/build.sh)" >&2; exit 1; }
-[ $# -ge 1 ] || { echo "usage: rsc.sh [-t windows|macos] <file.rsx> [out]" >&2; exit 2; }
+[ $# -ge 1 ] || { echo "usage: rsc.sh [--vm] [-t windows|macos|linux] <file.rsx> [out]" >&2; exit 2; }
 
 case "$tgt" in
-  macos | mac | darwin | osx) ext= ;;
+  macos | mac | darwin | osx | linux | elf | gnu) ext= ;;
   *) ext=.exe ;;
 esac
+if [ -n "$vm" ]; then ext=.rvm; fi
 
 src="$1"
 stem="$(basename "${src%.*}")"
@@ -50,11 +57,15 @@ else
 fi
 
 "$front" "$wsrc" -o "$wir"
-"$back" "$wir" -o "$wout" -s "$wsrc" -t "$tgt"
+if [ -n "$vm" ]; then
+  "$back" "$wir" --vm -o "$wout" -s "$wsrc"
+else
+  "$back" "$wir" -o "$wout" -s "$wsrc" -t "$tgt"
+fi
 rm -f "$ir"
 
 case "$tgt" in
-  macos | mac | darwin | osx) chmod 755 "$out" 2>/dev/null || true ;;
+  macos | mac | darwin | osx | linux | elf | gnu) [ -n "$vm" ] || chmod 755 "$out" 2>/dev/null || true ;;
 esac
 
 echo "built $out"

@@ -100,18 +100,40 @@ build_tree() {
   ( cd -- "$root" && bash ./build.sh )
 }
 
+pick_src() {
+  local name=$1
+  local cand
+  for cand in "$here/bin/$name" "$here/bin/$name.exe"; do
+    if [ -f "$cand" ]; then
+      printf '%s\n' "$cand"
+      return 0
+    fi
+  done
+  case "$name" in
+    rsc) cand="$root/frontend/target/release/rsc" ;;
+    rscb) cand="$root/backend/rscb" ;;
+    rscvm) cand="$root/backend/rscvm" ;;
+    rmake) cand="$root/build/rmake" ;;
+    cdc) cand="$root/cdc/target/release/cdc" ;;
+    mini) cand="$root/mini/mini" ;;
+    *) return 1 ;;
+  esac
+  if [ -f "$cand" ]; then
+    printf '%s\n' "$cand"
+    return 0
+  fi
+  if [ -f "$cand.exe" ]; then
+    printf '%s.exe\n' "$cand"
+    return 0
+  fi
+  return 1
+}
+
 pick() {
   local name=$1
   local out=$2
   local src
-  case "$name" in
-    rsc) src="$root/frontend/target/release/rsc" ;;
-    rscb) src="$root/backend/rscb" ;;
-    cdc) src="$root/cdc/target/release/cdc" ;;
-    mini) src="$root/mini/mini" ;;
-    *) src="" ;;
-  esac
-  [ -x "$src" ] || return 1
+  src=$(pick_src "$name") || return 1
   cp "$src" "$out"
   chmod 755 "$out"
 }
@@ -130,21 +152,28 @@ back="$tc/rscb"
 
 case "$(uname -s)" in
   MINGW* | MSYS* | CYGWIN*) host=windows ;;
-  *) host=macos ;;
+  Darwin) host=macos ;;
+  *) host=linux ;;
 esac
 
 tgt="${RSC_TARGET:-$host}"
-if [ "${1:-}" = "-t" ]; then
+vm=
+if [ "${1:-}" = "--vm" ]; then
+  vm=1
+  shift
+fi
+if [ "${1:-}" = "-t" ] && [ -z "$vm" ]; then
   tgt="${2:-}"
   shift 2
 fi
 
-[ $# -ge 1 ] || { echo "usage: rsc [-t windows|macos] <file.rsx> [out]" >&2; exit 2; }
+[ $# -ge 1 ] || { echo "usage: rsc [--vm] [-t windows|macos|linux] <file.rsx> [out]" >&2; exit 2; }
 
 case "$tgt" in
-  macos | mac | darwin | osx) ext= ;;
+  macos | mac | darwin | osx | linux | elf | gnu) ext= ;;
   *) ext=.exe ;;
 esac
+if [ -n "$vm" ]; then ext=.rvm; fi
 
 src="$1"
 stem="$(basename "${src%.*}")"
@@ -158,16 +187,71 @@ fi
 ir="$dir/$stem.rsi"
 
 "$front" "$src" -o "$ir"
-"$back" "$ir" -o "$out" -s "$src" -t "$tgt"
+if [ -n "$vm" ]; then
+  "$back" "$ir" --vm -o "$out" -s "$src"
+else
+  "$back" "$ir" -o "$out" -s "$src" -t "$tgt"
+fi
 rm -f "$ir"
 
 case "$tgt" in
-  macos | mac | darwin | osx) chmod 755 "$out" 2>/dev/null || true ;;
+  macos | mac | darwin | osx | linux | elf | gnu) [ -n "$vm" ] || chmod 755 "$out" 2>/dev/null || true ;;
 esac
 
 echo "built $out"
 DRIVER
   chmod 755 "$bindir/rsc"
+}
+
+write_rmake_shim() {
+  cat >"$bindir/rmake" <<'SHIM'
+#!/usr/bin/env bash
+set -euo pipefail
+
+here=$(cd -- "$(dirname -- "$0")" && pwd -P)
+exe="$here/../toolchain/rmake"
+[ -x "$exe" ] || { echo "rmake: missing $exe" >&2; exit 1; }
+
+start="$PWD"
+mkdir -p .rmake
+args="$PWD/.rmake/cmd.txt"
+{
+  echo "--rsc"
+  echo "$here/rsc"
+  if [ $# -gt 0 ]; then
+    printf '%s\n' "$@"
+  fi
+} > "$args"
+
+export RMAKE_CMD="$args"
+if command -v cygpath >/dev/null 2>&1; then
+  RMAKE_CMD="$(cygpath -w "$args")"
+fi
+export RMAKE_CMD
+
+case "${1:-}" in
+  help | --help | -h)
+    exec "$exe"
+    ;;
+esac
+
+export RMAKE_SEEK=1
+while :; do
+  rc=0
+  "$exe" || rc=$?
+  if [ "$rc" -ne 3 ]; then
+    exit "$rc"
+  fi
+  before="$PWD"
+  cd ..
+  if [ "$PWD" = "$before" ]; then
+    printf 'rmake: no RMakefile in %s or any parent\n' "$start" >&2
+    printf 'rmake: pass --manifest PATH to name a build file\n' >&2
+    exit 1
+  fi
+done
+SHIM
+  chmod 755 "$bindir/rmake"
 }
 
 write_tool() {
@@ -275,28 +359,27 @@ SRC
 install_all() {
   guard_prefix
   say "prefix $prefix"
-  local front="$root/frontend/target/release/rsc"
-  local back="$root/backend/rscb"
-  if [ ! -x "$front" ] || [ ! -x "$back" ]; then
+  if ! pick_src rsc >/dev/null 2>&1 || ! pick_src rscb >/dev/null 2>&1; then
     if [ "$no_build" = 1 ]; then
-      die "the toolchain is not built; drop --no-build or run ./build.sh"
+      die "no rsc and rscb here; drop --no-build or run make tools"
     fi
     build_tree
   fi
-  [ -x "$root/frontend/target/release/rsc" ] || die "missing $root/frontend/target/release/rsc"
-  [ -x "$root/backend/rscb" ] || die "missing $root/backend/rscb"
+  pick_src rsc >/dev/null 2>&1 || die "missing rsc"
+  pick_src rscb >/dev/null 2>&1 || die "missing rscb"
+  pick_src rmake >/dev/null 2>&1 || die "missing rmake - run make tools"
 
   mkdir -p "$toolchain" "$bindir"
   local names=""
   local n
-  for n in rsc rscb cdc mini; do
+  for n in rsc rscb rscvm rmake cdc mini; do
     if pick "$n" "$toolchain/$n"; then
       if [ -z "$names" ]; then
         names="$n"
       else
         names="$names, $n"
       fi
-    elif [ "$n" = rsc ] || [ "$n" = rscb ]; then
+    elif [ "$n" = rsc ] || [ "$n" = rscb ] || [ "$n" = rscvm ] || [ "$n" = rmake ]; then
       die "missing $n in the build"
     fi
   done
@@ -305,7 +388,8 @@ install_all() {
   fi
 
   write_driver
-  for n in rscb cdc mini; do
+  write_rmake_shim
+  for n in rscb rscvm cdc mini; do
     if [ -x "$toolchain/$n" ]; then
       write_tool "$n"
     fi

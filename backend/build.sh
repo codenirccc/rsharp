@@ -59,7 +59,29 @@ rm -f ./*.cmi ./*.cmx ./*.o
   target.ml \
   pe.ml \
   macho.ml \
+  elf.ml \
   cg.ml \
+  vm.ml \
   main.ml
 
 echo "==> rscb$EXE built"
+
+"$OCAMLOPT" -I "$OCAMLLIB" -w +a-4-9-40-41-42-44-45-70 -o "rscvm$EXE" \
+  sexp.ml \
+  ast.ml \
+  fold.ml \
+  lto.ml \
+  range.ml \
+  parse.ml \
+  typeck.ml \
+  mono.ml \
+  borrow.ml \
+  x64.ml \
+  target.ml \
+  pe.ml \
+  macho.ml \
+  cg.ml \
+  vm.ml \
+  vmrun.ml
+
+echo "==> rscvm$EXE built"

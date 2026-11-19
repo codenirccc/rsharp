@@ -49,7 +49,7 @@ let stamp name =
 let () =
   let args = Array.to_list Sys.argv |> List.tl in
   let input = ref None and output = ref None and verbose = ref false in
-  let src = ref None and target = ref Target.host in
+  let src = ref None and target = ref Target.host and vm = ref false in
   let rec scan = function
     | [] -> ()
     | "-o" :: path :: rest ->
@@ -66,6 +66,9 @@ let () =
         | None -> die 2 "unknown target '%s' (windows, macos)" name)
     | "-v" :: rest ->
         verbose := true;
+        scan rest
+    | "--vm" :: rest ->
+        vm := true;
         scan rest
     | a :: _ when String.length a > 0 && a.[0] = '-' -> die 2 "unknown flag '%s'" a
     | a :: rest -> (
@@ -113,37 +116,55 @@ let () =
   stamp "fold2";
   let unchecked = Range.run program in
   stamp "range";
-  let image =
-    try Cg.compile ~unchecked tgt program
-    with Cg.Error e -> die 1 "%s: %s" label e | Failure e -> die 1 "%s: %s" label e
-  in
-  stamp "cg";
-
   let bytes =
-    try
-      match tgt.Target.fmt with
-      | Target.Pe ->
-          Pe.link ~text:image.Cg.im_text ~rdata:image.Cg.im_rdata
-            ~entry:image.Cg.im_entry ~ext_refs:image.Cg.im_ext
-            ~data_refs:image.Cg.im_data ~imports:image.Cg.im_imports
-      | Target.MachO ->
-          Macho.link ~text:image.Cg.im_text ~rdata:image.Cg.im_rdata
-            ~entry:image.Cg.im_entry ~ext_refs:image.Cg.im_ext
-            ~data_refs:image.Cg.im_data ~imports:image.Cg.im_imports
-    with Failure e -> die 1 "%s: %s" label e
+    if !vm then begin
+      let s =
+        try Vm.compile ~unchecked program
+        with Vm.Error e -> die 1 "%s: %s" label e
+      in
+      stamp "vm";
+      Bytes.of_string s
+    end
+    else begin
+      let image =
+        try Cg.compile ~unchecked tgt program
+        with Cg.Error e -> die 1 "%s: %s" label e | Failure e -> die 1 "%s: %s" label e
+      in
+      stamp "cg";
+      let b =
+        try
+          match tgt.Target.fmt with
+          | Target.Pe ->
+              Pe.link ~text:image.Cg.im_text ~rdata:image.Cg.im_rdata
+                ~entry:image.Cg.im_entry ~ext_refs:image.Cg.im_ext
+                ~data_refs:image.Cg.im_data ~imports:image.Cg.im_imports
+          | Target.MachO ->
+              Macho.link ~text:image.Cg.im_text ~rdata:image.Cg.im_rdata
+                ~entry:image.Cg.im_entry ~ext_refs:image.Cg.im_ext
+                ~data_refs:image.Cg.im_data ~imports:image.Cg.im_imports
+          | Target.Elf ->
+              Elf.link ~text:image.Cg.im_text ~rdata:image.Cg.im_rdata
+                ~entry:image.Cg.im_entry ~ext_refs:image.Cg.im_ext
+                ~data_refs:image.Cg.im_data ~imports:image.Cg.im_imports
+        with Failure e -> die 1 "%s: %s" label e
+      in
+      stamp "link";
+      b
+    end
   in
-  stamp "link";
 
   let out =
     match !output with
     | Some o -> o
-    | None -> ( match tgt.Target.fmt with Target.Pe -> "a.exe" | Target.MachO -> "a.out")
+    | None ->
+        if !vm then "a.rvm"
+        else ( match tgt.Target.fmt with Target.Pe -> "a.exe" | Target.MachO | Target.Elf -> "a.out")
   in
   (try write_file out (Bytes.to_string bytes)
    with Sys_error e -> die 1 "cannot write '%s': %s" out e);
   stamp "write";
 
-  if tgt.Target.fmt = Target.MachO && not Sys.win32 then
+  if (not !vm) && tgt.Target.fmt <> Target.Pe && not Sys.win32 then
     ignore (Sys.command (Printf.sprintf "chmod 755 %s" (Filename.quote out)));
 
   if !verbose then
@@ -156,11 +177,10 @@ let () =
 
   if !verbose then
     Printf.eprintf
-      "rscb: %s: %d const(s), %d struct(s), %d extern(s), %d fn(s) -> %d bytes of text, %d bytes of image\n"
-      tgt.Target.name
+      "rscb: %s: %d const(s), %d struct(s), %d extern(s), %d fn(s) -> %d bytes of image\n"
+      (if !vm then "vm" else tgt.Target.name)
       (List.length program.Ast.consts)
       (List.length program.Ast.structs)
       (List.length program.Ast.externs)
       (List.length program.Ast.fns)
-      (Bytes.length image.Cg.im_text)
       (Bytes.length bytes)

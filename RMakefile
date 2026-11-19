@@ -1,0 +1,55 @@
+# rmake build file for the R# toolchain
+
+outdir build
+
+[exe hello]
+src examples/hello.rsx
+
+[exe arrays]
+src examples/arrays.rsx
+
+[exe structs]
+src examples/structs.rsx
+
+[exe generics]
+src examples/generics.rsx
+
+[exe closures]
+src examples/closures.rsx
+
+[exe oop]
+src examples/oop.rsx
+
+[exe edge]
+src examples/edge.rsx
+
+[exe fib]
+src examples/fib.rsx
+
+[exe bench]
+src examples/bench.rsx
+
+[exe linalg]
+src work/linalg/t_linalg.rsx
+
+[exe rsc2]
+src rscx/main.rsx
+
+[exe hello_mac]
+src examples/hello.rsx
+tgt macos
+
+[exe hello_linux]
+src examples/hello.rsx
+tgt linux
+
+[exe edge_vm]
+src examples/edge.rsx
+tgt vm
+
+[test hello_test]
+src examples/hello.rsx
+
+[test smoke]
+src examples/fib.rsx
+deps hello_test

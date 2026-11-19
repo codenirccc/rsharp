@@ -145,7 +145,7 @@ fn tp_errors() -> i32 {
     let s_unclosed: ptr<u8> = "fn main() {\n    let x: i64 = 1;\n" as ptr<u8>;
     fails += tp_err("unclosed" as ptr<u8>, s_unclosed, "line 3:1: unexpected end of file inside a block" as ptr<u8>);
     let s_baditem: ptr<u8> = "let x: i64 = 1;\n" as ptr<u8>;
-    fails += tp_err("baditem" as ptr<u8>, s_baditem, "line 1:1: expected 'const', 'struct', 'enum', 'extern', 'static', 'mod', 'impl' or 'fn', found 'let'" as ptr<u8>);
+    fails += tp_err("baditem" as ptr<u8>, s_baditem, "line 1:1: expected 'const', 'struct', 'class', 'trait', 'enum', 'extern', 'static', 'mod', 'impl' or 'fn', found 'let'" as ptr<u8>);
     let s_dupparam: ptr<u8> = "fn f(a: i64, a: i64) -> i64 {\n    return a;\n}\n" as ptr<u8>;
     fails += tp_err("dupparam" as ptr<u8>, s_dupparam, "duplicate parameter 'a' in fn 'f'" as ptr<u8>);
     let s_badif: ptr<u8> = "fn main() -> i32 {\n    if 1 {\n        return 0;\n    }\n    return 1;\n}\n" as ptr<u8>;

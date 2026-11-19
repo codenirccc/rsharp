@@ -36,6 +36,9 @@ const TY_FN: i32 = 20;
 const TY_FNC: i32 = 21;
 const TY_TASK: i32 = 22;
 const TY_PARAM: i32 = 23;
+const TY_FAT: i32 = 24;
+const TY_DYN: i32 = 25;
+const TY_SELF: i32 = 26;
 
 const EX_INT: i32 = 40;
 const EX_FLOAT: i32 = 41;
@@ -86,6 +89,8 @@ const IT_STRUCT: i32 = 102;
 const IT_ENUM: i32 = 103;
 const IT_EXTERN: i32 = 104;
 const IT_FN: i32 = 105;
+const IT_TRAIT: i32 = 106;
+const IT_TM: i32 = 107;
 
 const PT_WILD: i32 = 110;
 const PT_LIT: i32 = 111;
@@ -94,75 +99,143 @@ const PT_VARIANT: i32 = 113;
 
 const AR_ARM: i32 = 115;
 
+const NA_SHIFT: i64 = 12;
+const NA_BLK: i64 = 4096;
+const NA_MASK: i64 = 4095;
+
 struct Nd {
     k: i32,
-    s: i64,
-    s2: i64,
-    a: i64,
-    b: i64,
-    c: i64,
-    n: i64,
     m: i32,
-    f: f64,
-    l: i64,
-    l2: i64,
-    l3: i64,
-    ty: i64
+    s: i32,
+    s2: i32,
+    a: i32,
+    b: i32,
+    c: i32,
+    l: i32,
+    l2: i32,
+    l3: i32,
+    ty: i32,
+    n: i64,
+    f: f64
 }
 
 struct Na {
-    v: ptr<Nd>,
+    v: ptr<ptr<Nd>>,
     n: i64,
-    cap: i64,
+    nb: i64,
+    bcap: i64,
     bad: i32
+}
+
+fn na_at(v: ptr<ptr<Nd>>, id: i64) -> ptr<Nd> {
+    var q: ptr<Nd> = null;
+    var off: i64 = 0;
+    unsafe {
+        q = v[id >> NA_SHIFT];
+        off = id & NA_MASK;
+    }
+    unsafe {
+        return q + off;
+    }
+}
+
+fn na_blk(a: &mut Na, blk: i64) -> ptr<Nd> {
+    var q: ptr<Nd> = null;
+    unsafe { q = a.v[blk]; }
+    if (q != null) {
+        return q;
+    }
+    q = malloc((NA_BLK as u64) * sizeof(Nd)) as ptr<Nd>;
+    if (q == null) {
+        a.bad = 1;
+        return null;
+    }
+    unsafe { memset(q as ptr<u8>, 0, (NA_BLK as u64) * sizeof(Nd)); }
+    unsafe { a.v[blk] = q; }
+    if (a.nb < blk + 1) {
+        a.nb = blk + 1;
+    }
+    return q;
 }
 
 fn na_new() -> Na {
     var a: Na = zero(Na);
-    a.cap = 256;
-    a.v = malloc((a.cap as u64) * sizeof(Nd)) as ptr<Nd>;
+    a.bcap = 64;
+    a.v = malloc((a.bcap as u64) * sizeof(ptr<Nd>)) as ptr<ptr<Nd>>;
     if (a.v == null) {
         a.bad = 1;
         return a;
     }
-    unsafe { a.v[0] = zero(Nd); }
+    unsafe { memset(a.v as ptr<u8>, 0, (a.bcap as u64) * sizeof(ptr<Nd>)); }
+    if (na_blk(&mut a, 0) == null) {
+        return a;
+    }
     a.n = 1;
     return a;
 }
 
+fn na_copy(v: ptr<ptr<Nd>>, dst: i64, src: i64) {
+    var t: Nd = zero(Nd);
+    unsafe { t = na_at(v, src)[0]; }
+    unsafe { na_at(v, dst)[0] = t; }
+}
+
 fn na_free(a: &mut Na) {
     if (a.v != null) {
-        free(a.v as ptr<u8>);
+        var i: i64 = 0;
+        unsafe {
+            while (i < a.bcap) {
+                let q: ptr<Nd> = a.v[i];
+                if (q != null) {
+                    free(q as ptr<u8>);
+                    a.v[i] = null;
+                }
+                i += 1;
+            }
+            free(a.v as ptr<u8>);
+        }
         a.v = null;
     }
     a.n = 0;
-    a.cap = 0;
+    a.nb = 0;
+    a.bcap = 0;
 }
 
 fn na_add(a: &mut Na, k: i32) -> i64 {
     if (a.bad == 1) {
         return 0;
     }
-    if (a.n >= a.cap) {
-        let nc: i64 = a.cap * 2;
-        var raw: ptr<u8> = realloc(a.v as ptr<u8>, (nc as u64) * sizeof(Nd));
+    let id: i64 = a.n;
+    let blk: i64 = id >> NA_SHIFT;
+    if (blk >= a.bcap) {
+        var nb: i64 = a.bcap;
+        while (nb <= blk) {
+            nb = nb + nb / 2;
+        }
+        var raw: ptr<u8> = realloc(a.v as ptr<u8>, (nb as u64) * sizeof(ptr<Nd>));
         if (raw == null) {
             a.bad = 1;
             return 0;
         }
-        a.v = raw as ptr<Nd>;
-        a.cap = nc;
+        var dir: ptr<ptr<Nd>> = raw as ptr<ptr<Nd>>;
+        unsafe {
+            let tail: ptr<u8> = (dir + a.bcap) as ptr<u8>;
+            memset(tail, 0, ((nb - a.bcap) as u64) * sizeof(ptr<Nd>));
+        }
+        a.v = dir;
+        a.bcap = nb;
     }
-    let id: i64 = a.n;
-    unsafe { a.v[id] = zero(Nd); }
-    unsafe { a.v[id].k = k; }
-    a.n += 1;
+    if (na_blk(a, blk) == null) {
+        return 0;
+    }
+    unsafe { na_at(a.v, id).k = k; }
+    a.n = id + 1;
     return id;
 }
 
 fn ty_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, t: i64) {
     var k: i32 = 0;
-    unsafe { k = a.v[t].k; }
+    unsafe { k = na_at(a.v, t).k; }
     if (k == TY_I8) {
         sb_puts(b, "i8");
     } else if (k == TY_I16) {
@@ -192,25 +265,25 @@ fn ty_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, t: i64) {
     } else if (k == TY_PTR) {
         sb_puts(b, "(ptr ");
         var c: i64 = 0;
-        unsafe { c = a.v[t].a; }
+        unsafe { c = (na_at(a.v, t).a as i64); }
         ty_w(a, lp, sp, b, c);
         sb_putc(b, 41);
     } else if (k == TY_REF) {
         var mu: i32 = 0;
-        unsafe { mu = a.v[t].m; }
+        unsafe { mu = na_at(a.v, t).m; }
         if (mu == 1) {
             sb_puts(b, "(refmut ");
         } else {
             sb_puts(b, "(ref ");
         }
         var c: i64 = 0;
-        unsafe { c = a.v[t].a; }
+        unsafe { c = (na_at(a.v, t).a as i64); }
         ty_w(a, lp, sp, b, c);
         sb_putc(b, 41);
     } else if (k == TY_HEAP) {
         sb_puts(b, "(box ");
         var c: i64 = 0;
-        unsafe { c = a.v[t].a; }
+        unsafe { c = (na_at(a.v, t).a as i64); }
         ty_w(a, lp, sp, b, c);
         sb_putc(b, 41);
     } else if (k == TY_ARRAY) {
@@ -220,10 +293,10 @@ fn ty_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, t: i64) {
         var nm: i64 = 0;
         var us: i32 = 0;
         unsafe {
-            c = a.v[t].a;
-            sz = a.v[t].n;
-            nm = a.v[t].s;
-            us = a.v[t].m;
+            c = (na_at(a.v, t).a as i64);
+            sz = na_at(a.v, t).n;
+            nm = (na_at(a.v, t).s as i64);
+            us = na_at(a.v, t).m;
         }
         ty_w(a, lp, sp, b, c);
         sb_putc(b, 32);
@@ -236,13 +309,13 @@ fn ty_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, t: i64) {
     } else if (k == TY_NAMED) {
         sb_puts(b, "(named ");
         var nm: i64 = 0;
-        unsafe { nm = a.v[t].s; }
+        unsafe { nm = (na_at(a.v, t).s as i64); }
         sp_put(sp, b, nm);
         sb_putc(b, 41);
     } else if (k == TY_TUPLE) {
         sb_puts(b, "(tup");
         var l: i64 = 0;
-        unsafe { l = a.v[t].l; }
+        unsafe { l = (na_at(a.v, t).l as i64); }
         let n: i64 = lp_len(lp, l);
         var i: i64 = 0;
         while (i < n) {
@@ -260,8 +333,8 @@ fn ty_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, t: i64) {
         var l: i64 = 0;
         var r: i64 = 0;
         unsafe {
-            l = a.v[t].l;
-            r = a.v[t].a;
+            l = (na_at(a.v, t).l as i64);
+            r = (na_at(a.v, t).a as i64);
         }
         let n: i64 = lp_len(lp, l);
         var i: i64 = 0;
@@ -278,42 +351,50 @@ fn ty_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, t: i64) {
     } else if (k == TY_TASK) {
         sb_puts(b, "(task ");
         var c: i64 = 0;
-        unsafe { c = a.v[t].a; }
+        unsafe { c = (na_at(a.v, t).a as i64); }
         ty_w(a, lp, sp, b, c);
         sb_putc(b, 41);
     } else if (k == TY_PARAM) {
         sb_puts(b, "(var ");
         var nm: i64 = 0;
-        unsafe { nm = a.v[t].s; }
+        unsafe { nm = (na_at(a.v, t).s as i64); }
         sp_put(sp, b, nm);
         sb_putc(b, 41);
+    } else if (k == TY_FAT || k == TY_DYN) {
+        sb_puts(b, "(named ");
+        var nm: i64 = 0;
+        unsafe { nm = (na_at(a.v, t).s as i64); }
+        sp_put(sp, b, nm);
+        sb_putc(b, 41);
+    } else if (k == TY_SELF) {
+        sb_puts(b, "(named Self)");
     }
 }
 
 fn ex_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, e: i64) {
     var k: i32 = 0;
-    unsafe { k = a.v[e].k; }
+    unsafe { k = na_at(a.v, e).k; }
     if (k == EX_INT) {
         var v: i64 = 0;
-        unsafe { v = a.v[e].n; }
+        unsafe { v = na_at(a.v, e).n; }
         sb_puts(b, "(int ");
         sb_i64(b, v);
         sb_putc(b, 41);
     } else if (k == EX_FLOAT) {
         var v: f64 = 0.0;
-        unsafe { v = a.v[e].f; }
+        unsafe { v = na_at(a.v, e).f; }
         sb_puts(b, "(float ");
         sb_f64_dbg(b, v);
         sb_putc(b, 41);
     } else if (k == EX_STR) {
         var s: i64 = 0;
-        unsafe { s = a.v[e].s; }
+        unsafe { s = (na_at(a.v, e).s as i64); }
         sb_puts(b, "(str ");
         sb_esc(b, sp_ptr(sp, s), sp_len(sp, s));
         sb_putc(b, 41);
     } else if (k == EX_BOOL) {
         var v: i64 = 0;
-        unsafe { v = a.v[e].n; }
+        unsafe { v = na_at(a.v, e).n; }
         if (v == 1) {
             sb_puts(b, "(bool true)");
         } else {
@@ -323,7 +404,7 @@ fn ex_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, e: i64) {
         sb_puts(b, "(null)");
     } else if (k == EX_VAR) {
         var s: i64 = 0;
-        unsafe { s = a.v[e].s; }
+        unsafe { s = (na_at(a.v, e).s as i64); }
         sb_puts(b, "(var ");
         sp_put(sp, b, s);
         sb_putc(b, 41);
@@ -333,9 +414,9 @@ fn ex_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, e: i64) {
         var x: i64 = 0;
         var y: i64 = 0;
         unsafe {
-            s = a.v[e].s;
-            x = a.v[e].a;
-            y = a.v[e].b;
+            s = (na_at(a.v, e).s as i64);
+            x = (na_at(a.v, e).a as i64);
+            y = (na_at(a.v, e).b as i64);
         }
         sp_put(sp, b, s);
         sb_putc(b, 32);
@@ -348,8 +429,8 @@ fn ex_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, e: i64) {
         var s: i64 = 0;
         var x: i64 = 0;
         unsafe {
-            s = a.v[e].s;
-            x = a.v[e].a;
+            s = (na_at(a.v, e).s as i64);
+            x = (na_at(a.v, e).a as i64);
         }
         sp_put(sp, b, s);
         sb_putc(b, 32);
@@ -360,8 +441,8 @@ fn ex_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, e: i64) {
         var s: i64 = 0;
         var l: i64 = 0;
         unsafe {
-            s = a.v[e].s;
-            l = a.v[e].l;
+            s = (na_at(a.v, e).s as i64);
+            l = (na_at(a.v, e).l as i64);
         }
         sp_put(sp, b, s);
         let n: i64 = lp_len(lp, l);
@@ -377,8 +458,8 @@ fn ex_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, e: i64) {
         var x: i64 = 0;
         var y: i64 = 0;
         unsafe {
-            x = a.v[e].a;
-            y = a.v[e].b;
+            x = (na_at(a.v, e).a as i64);
+            y = (na_at(a.v, e).b as i64);
         }
         ex_w(a, lp, sp, b, x);
         sb_putc(b, 32);
@@ -389,8 +470,8 @@ fn ex_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, e: i64) {
         var x: i64 = 0;
         var s: i64 = 0;
         unsafe {
-            x = a.v[e].a;
-            s = a.v[e].s;
+            x = (na_at(a.v, e).a as i64);
+            s = (na_at(a.v, e).s as i64);
         }
         ex_w(a, lp, sp, b, x);
         sb_putc(b, 32);
@@ -399,25 +480,25 @@ fn ex_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, e: i64) {
     } else if (k == EX_DEREF) {
         sb_puts(b, "(deref ");
         var x: i64 = 0;
-        unsafe { x = a.v[e].a; }
+        unsafe { x = (na_at(a.v, e).a as i64); }
         ex_w(a, lp, sp, b, x);
         sb_putc(b, 41);
     } else if (k == EX_ADDR) {
         sb_puts(b, "(addr ");
         var x: i64 = 0;
-        unsafe { x = a.v[e].a; }
+        unsafe { x = (na_at(a.v, e).a as i64); }
         ex_w(a, lp, sp, b, x);
         sb_putc(b, 41);
     } else if (k == EX_ADDRMUT) {
         sb_puts(b, "(addrmut ");
         var x: i64 = 0;
-        unsafe { x = a.v[e].a; }
+        unsafe { x = (na_at(a.v, e).a as i64); }
         ex_w(a, lp, sp, b, x);
         sb_putc(b, 41);
     } else if (k == EX_BOXNEW) {
         sb_puts(b, "(boxnew ");
         var x: i64 = 0;
-        unsafe { x = a.v[e].a; }
+        unsafe { x = (na_at(a.v, e).a as i64); }
         ex_w(a, lp, sp, b, x);
         sb_putc(b, 41);
     } else if (k == EX_CAST) {
@@ -425,8 +506,8 @@ fn ex_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, e: i64) {
         var x: i64 = 0;
         var t: i64 = 0;
         unsafe {
-            x = a.v[e].a;
-            t = a.v[e].b;
+            x = (na_at(a.v, e).a as i64);
+            t = (na_at(a.v, e).b as i64);
         }
         ex_w(a, lp, sp, b, x);
         sb_putc(b, 32);
@@ -435,13 +516,13 @@ fn ex_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, e: i64) {
     } else if (k == EX_SIZEOF) {
         sb_puts(b, "(sizeof ");
         var t: i64 = 0;
-        unsafe { t = a.v[e].a; }
+        unsafe { t = (na_at(a.v, e).a as i64); }
         ty_w(a, lp, sp, b, t);
         sb_putc(b, 41);
     } else if (k == EX_ZERO) {
         sb_puts(b, "(zero ");
         var t: i64 = 0;
-        unsafe { t = a.v[e].a; }
+        unsafe { t = (na_at(a.v, e).a as i64); }
         ty_w(a, lp, sp, b, t);
         sb_putc(b, 41);
     } else if (k == EX_STRUCTLIT) {
@@ -449,8 +530,8 @@ fn ex_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, e: i64) {
         var s: i64 = 0;
         var l: i64 = 0;
         unsafe {
-            s = a.v[e].s;
-            l = a.v[e].l;
+            s = (na_at(a.v, e).s as i64);
+            l = (na_at(a.v, e).l as i64);
         }
         sp_put(sp, b, s);
         let n: i64 = lp_len(lp, l);
@@ -467,7 +548,7 @@ fn ex_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, e: i64) {
     } else if (k == EX_ARRAYLIT) {
         sb_puts(b, "(arraylit");
         var l: i64 = 0;
-        unsafe { l = a.v[e].l; }
+        unsafe { l = (na_at(a.v, e).l as i64); }
         let n: i64 = lp_len(lp, l);
         var i: i64 = 0;
         while (i < n) {
@@ -482,9 +563,9 @@ fn ex_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, e: i64) {
         var s2: i64 = 0;
         var l: i64 = 0;
         unsafe {
-            s = a.v[e].s;
-            s2 = a.v[e].s2;
-            l = a.v[e].l;
+            s = (na_at(a.v, e).s as i64);
+            s2 = (na_at(a.v, e).s2 as i64);
+            l = (na_at(a.v, e).l as i64);
         }
         sp_put(sp, b, s);
         sb_putc(b, 32);
@@ -500,7 +581,7 @@ fn ex_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, e: i64) {
     } else if (k == EX_TUPLELIT) {
         sb_puts(b, "(tuplelit");
         var l: i64 = 0;
-        unsafe { l = a.v[e].l; }
+        unsafe { l = (na_at(a.v, e).l as i64); }
         let n: i64 = lp_len(lp, l);
         var i: i64 = 0;
         while (i < n) {
@@ -512,7 +593,7 @@ fn ex_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, e: i64) {
     } else if (k == EX_FNREF) {
         sb_puts(b, "(fnref ");
         var s: i64 = 0;
-        unsafe { s = a.v[e].s; }
+        unsafe { s = (na_at(a.v, e).s as i64); }
         sp_put(sp, b, s);
         sb_putc(b, 41);
     } else if (k == EX_CALLV) {
@@ -520,8 +601,8 @@ fn ex_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, e: i64) {
         var x: i64 = 0;
         var l: i64 = 0;
         unsafe {
-            x = a.v[e].a;
-            l = a.v[e].l;
+            x = (na_at(a.v, e).a as i64);
+            l = (na_at(a.v, e).l as i64);
         }
         ex_w(a, lp, sp, b, x);
         let n: i64 = lp_len(lp, l);
@@ -535,13 +616,13 @@ fn ex_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, e: i64) {
     } else if (k == EX_AWAIT) {
         sb_puts(b, "(await ");
         var x: i64 = 0;
-        unsafe { x = a.v[e].a; }
+        unsafe { x = (na_at(a.v, e).a as i64); }
         ex_w(a, lp, sp, b, x);
         sb_putc(b, 41);
     } else if (k == EX_POLL) {
         sb_puts(b, "(poll ");
         var x: i64 = 0;
-        unsafe { x = a.v[e].a; }
+        unsafe { x = (na_at(a.v, e).a as i64); }
         ex_w(a, lp, sp, b, x);
         sb_putc(b, 41);
     } else if (k == EX_METHOD) {
@@ -550,9 +631,9 @@ fn ex_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, e: i64) {
         var s: i64 = 0;
         var l: i64 = 0;
         unsafe {
-            x = a.v[e].a;
-            s = a.v[e].s;
-            l = a.v[e].l;
+            x = (na_at(a.v, e).a as i64);
+            s = (na_at(a.v, e).s as i64);
+            l = (na_at(a.v, e).l as i64);
         }
         ex_w(a, lp, sp, b, x);
         sb_putc(b, 32);
@@ -578,7 +659,7 @@ fn ind_w(b: &mut Sb, d: i64) {
 
 fn st_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, st: i64, d: i64) {
     var k: i32 = 0;
-    unsafe { k = a.v[st].k; }
+    unsafe { k = na_at(a.v, st).k; }
     if (k == ST_LET) {
         ind_w(b, d);
         var mu: i32 = 0;
@@ -586,10 +667,10 @@ fn st_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, st: i64, d: i64) {
         var t: i64 = 0;
         var init: i64 = 0;
         unsafe {
-            mu = a.v[st].m;
-            s = a.v[st].s;
-            t = a.v[st].a;
-            init = a.v[st].b;
+            mu = na_at(a.v, st).m;
+            s = (na_at(a.v, st).s as i64);
+            t = (na_at(a.v, st).a as i64);
+            init = (na_at(a.v, st).b as i64);
         }
         if (mu == 1) {
             sb_puts(b, "(var ");
@@ -610,9 +691,9 @@ fn st_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, st: i64, d: i64) {
         var x: i64 = 0;
         var y: i64 = 0;
         unsafe {
-            s = a.v[st].s;
-            x = a.v[st].a;
-            y = a.v[st].b;
+            s = (na_at(a.v, st).s as i64);
+            x = (na_at(a.v, st).a as i64);
+            y = (na_at(a.v, st).b as i64);
         }
         sb_puts(b, "(assign ");
         sp_put(sp, b, s);
@@ -624,7 +705,7 @@ fn st_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, st: i64, d: i64) {
     } else if (k == ST_EXPR) {
         ind_w(b, d);
         var x: i64 = 0;
-        unsafe { x = a.v[st].a; }
+        unsafe { x = (na_at(a.v, st).a as i64); }
         sb_puts(b, "(expr ");
         ex_w(a, lp, sp, b, x);
         sb_puts(b, ")\n");
@@ -636,7 +717,7 @@ fn st_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, st: i64, d: i64) {
             sb_puts(b, "(unsafe\n");
         }
         var l: i64 = 0;
-        unsafe { l = a.v[st].l; }
+        unsafe { l = (na_at(a.v, st).l as i64); }
         st_blk(a, lp, sp, b, l, d + 1);
         ind_w(b, d);
         sb_puts(b, ")\n");
@@ -646,9 +727,9 @@ fn st_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, st: i64, d: i64) {
         var tl: i64 = 0;
         var el: i64 = 0;
         unsafe {
-            c = a.v[st].a;
-            tl = a.v[st].l;
-            el = a.v[st].l2;
+            c = (na_at(a.v, st).a as i64);
+            tl = (na_at(a.v, st).l as i64);
+            el = (na_at(a.v, st).l2 as i64);
         }
         sb_puts(b, "(if ");
         ex_w(a, lp, sp, b, c);
@@ -672,8 +753,8 @@ fn st_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, st: i64, d: i64) {
         var c: i64 = 0;
         var bl: i64 = 0;
         unsafe {
-            c = a.v[st].a;
-            bl = a.v[st].l;
+            c = (na_at(a.v, st).a as i64);
+            bl = (na_at(a.v, st).l as i64);
         }
         sb_puts(b, "(while ");
         ex_w(a, lp, sp, b, c);
@@ -684,7 +765,7 @@ fn st_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, st: i64, d: i64) {
     } else if (k == ST_LOOP) {
         ind_w(b, d);
         var bl: i64 = 0;
-        unsafe { bl = a.v[st].l; }
+        unsafe { bl = (na_at(a.v, st).l as i64); }
         sb_puts(b, "(loop\n");
         st_blk(a, lp, sp, b, bl, d + 1);
         ind_w(b, d);
@@ -696,10 +777,10 @@ fn st_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, st: i64, d: i64) {
         var y: i64 = 0;
         var bl: i64 = 0;
         unsafe {
-            s = a.v[st].s;
-            x = a.v[st].a;
-            y = a.v[st].b;
-            bl = a.v[st].l;
+            s = (na_at(a.v, st).s as i64);
+            x = (na_at(a.v, st).a as i64);
+            y = (na_at(a.v, st).b as i64);
+            bl = (na_at(a.v, st).l as i64);
         }
         sb_puts(b, "(for ");
         sp_put(sp, b, s);
@@ -716,8 +797,8 @@ fn st_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, st: i64, d: i64) {
         var sc: i64 = 0;
         var al: i64 = 0;
         unsafe {
-            sc = a.v[st].a;
-            al = a.v[st].l;
+            sc = (na_at(a.v, st).a as i64);
+            al = (na_at(a.v, st).l as i64);
         }
         sb_puts(b, "(match ");
         ex_w(a, lp, sp, b, sc);
@@ -731,15 +812,15 @@ fn st_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, st: i64, d: i64) {
             var p: i64 = 0;
             var bl: i64 = 0;
             unsafe {
-                p = a.v[arm].a;
-                bl = a.v[arm].l;
+                p = (na_at(a.v, arm).a as i64);
+                bl = (na_at(a.v, arm).l as i64);
             }
-            unsafe { pk = a.v[p].k; }
+            unsafe { pk = na_at(a.v, p).k; }
             if (pk == PT_WILD) {
                 sb_puts(b, "(arm (pat wild)\n");
             } else if (pk == PT_LIT) {
                 var v: i64 = 0;
-                unsafe { v = a.v[p].n; }
+                unsafe { v = na_at(a.v, p).n; }
                 sb_puts(b, "(arm (pat lit ");
                 sb_i64(b, v);
                 sb_puts(b, ")\n");
@@ -747,8 +828,8 @@ fn st_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, st: i64, d: i64) {
                 var lo: i64 = 0;
                 var hi: i64 = 0;
                 unsafe {
-                    lo = a.v[p].n;
-                    hi = a.v[p].b;
+                    lo = na_at(a.v, p).n;
+                    hi = (na_at(a.v, p).b as i64);
                 }
                 sb_puts(b, "(arm (pat range ");
                 sb_i64(b, lo);
@@ -760,9 +841,9 @@ fn st_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, st: i64, d: i64) {
                 var s2: i64 = 0;
                 var bl2: i64 = 0;
                 unsafe {
-                    s = a.v[p].s;
-                    s2 = a.v[p].s2;
-                    bl2 = a.v[p].l;
+                    s = (na_at(a.v, p).s as i64);
+                    s2 = (na_at(a.v, p).s2 as i64);
+                    bl2 = (na_at(a.v, p).l as i64);
                 }
                 sb_puts(b, "(arm (pat ");
                 sp_put(sp, b, s);
@@ -791,7 +872,7 @@ fn st_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, st: i64, d: i64) {
     } else if (k == ST_BREAK || k == ST_CONTINUE) {
         ind_w(b, d);
         var s: i64 = 0;
-        unsafe { s = a.v[st].s; }
+        unsafe { s = (na_at(a.v, st).s as i64); }
         if (k == ST_BREAK) {
             if (s != 0) {
                 sb_puts(b, "(break ");
@@ -814,8 +895,8 @@ fn st_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, st: i64, d: i64) {
         var s: i64 = 0;
         var inner: i64 = 0;
         unsafe {
-            s = a.v[st].s;
-            inner = a.v[st].a;
+            s = (na_at(a.v, st).s as i64);
+            inner = (na_at(a.v, st).a as i64);
         }
         sb_puts(b, "(label ");
         sp_put(sp, b, s);
@@ -826,7 +907,7 @@ fn st_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, st: i64, d: i64) {
     } else if (k == ST_RETURN) {
         ind_w(b, d);
         var x: i64 = 0;
-        unsafe { x = a.v[st].a; }
+        unsafe { x = (na_at(a.v, st).a as i64); }
         if (x == 0) {
             sb_puts(b, "(return)\n");
         } else {
@@ -848,15 +929,15 @@ fn st_blk(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, l: i64, d: i64) {
 
 fn it_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, it: i64) {
     var k: i32 = 0;
-    unsafe { k = a.v[it].k; }
+    unsafe { k = na_at(a.v, it).k; }
     if (k == IT_CONST) {
         var s: i64 = 0;
         var t: i64 = 0;
         var v: i64 = 0;
         unsafe {
-            s = a.v[it].s;
-            t = a.v[it].a;
-            v = a.v[it].b;
+            s = (na_at(a.v, it).s as i64);
+            t = (na_at(a.v, it).a as i64);
+            v = (na_at(a.v, it).b as i64);
         }
         sb_puts(b, "  (const ");
         sp_put(sp, b, s);
@@ -871,10 +952,10 @@ fn it_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, it: i64) {
         var v: i64 = 0;
         var mu: i32 = 0;
         unsafe {
-            s = a.v[it].s;
-            t = a.v[it].a;
-            v = a.v[it].b;
-            mu = a.v[it].m;
+            s = (na_at(a.v, it).s as i64);
+            t = (na_at(a.v, it).a as i64);
+            v = (na_at(a.v, it).b as i64);
+            mu = na_at(a.v, it).m;
         }
         sb_puts(b, "  (static ");
         sp_put(sp, b, s);
@@ -891,8 +972,8 @@ fn it_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, it: i64) {
         var s: i64 = 0;
         var l: i64 = 0;
         unsafe {
-            s = a.v[it].s;
-            l = a.v[it].l;
+            s = (na_at(a.v, it).s as i64);
+            l = (na_at(a.v, it).l as i64);
         }
         sb_puts(b, "  (struct ");
         sp_put(sp, b, s);
@@ -912,8 +993,8 @@ fn it_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, it: i64) {
         var s: i64 = 0;
         var l: i64 = 0;
         unsafe {
-            s = a.v[it].s;
-            l = a.v[it].l;
+            s = (na_at(a.v, it).s as i64);
+            l = (na_at(a.v, it).l as i64);
         }
         sb_puts(b, "  (enum ");
         sp_put(sp, b, s);
@@ -947,11 +1028,11 @@ fn it_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, it: i64) {
         var rt: i64 = 0;
         var va: i32 = 0;
         unsafe {
-            s = a.v[it].s;
-            s2 = a.v[it].s2;
-            pl = a.v[it].l;
-            rt = a.v[it].a;
-            va = a.v[it].m;
+            s = (na_at(a.v, it).s as i64);
+            s2 = (na_at(a.v, it).s2 as i64);
+            pl = (na_at(a.v, it).l as i64);
+            rt = (na_at(a.v, it).a as i64);
+            va = na_at(a.v, it).m;
         }
         sb_puts(b, "  (extern ");
         sp_put(sp, b, s);
@@ -985,13 +1066,13 @@ fn it_w(a: &mut Na, lp: &mut Lp, sp: &mut Sp, b: &mut Sb, it: i64) {
         var cab: i32 = 0;
         var bl: i64 = 0;
         unsafe {
-            s = a.v[it].s;
-            tp = a.v[it].l;
-            ps = a.v[it].l2;
-            rt = a.v[it].a;
-            asy = a.v[it].n as i32;
-            cab = a.v[it].m;
-            bl = a.v[it].l3;
+            s = (na_at(a.v, it).s as i64);
+            tp = (na_at(a.v, it).l as i64);
+            ps = (na_at(a.v, it).l2 as i64);
+            rt = (na_at(a.v, it).a as i64);
+            asy = na_at(a.v, it).n as i32;
+            cab = na_at(a.v, it).m;
+            bl = (na_at(a.v, it).l3 as i64);
         }
         sb_puts(b, "  (fn ");
         sp_put(sp, b, s);

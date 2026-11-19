@@ -39,3 +39,13 @@ editors/vscode/*.vsix
 /rscx/build/
 /work/dotnet/fixture/bin/
 /work/dotnet/fixture/obj/
+/.rmake/
+/dist/
+/backend/rscvm.exe
+/examples/hello.exe
+/rscx/*.bad
+/rscx/*.bak
+/rscx/*.i32bak
+/rscx/*.prelex
+/tools/.rmake/
+/tools/rmake/fix.sh

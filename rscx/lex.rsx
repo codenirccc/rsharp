@@ -39,7 +39,12 @@ struct Lexer {
     err: [u8; 256],
     wb: ptr<u8>,
     wbn: i64,
-    wbcap: i64
+    wbcap: i64,
+    tok: LexTok,
+    cur: LexTok,
+    peek: LexTok,
+    stream: i32,
+    hit: i32
 }
 
 fn lex_is_alpha(c: u8) -> bool {
@@ -335,6 +340,19 @@ fn lex_sets(lx: &mut Lexer, line: i64, tail: ptr<u8>, s: ptr<u8>) {
 
 fn lex_push(lx: &mut Lexer, kind: i32, line: i64, col: i64, num: i64, fp: f64,
             sp: ptr<u8>, slen: i64) -> i32 {
+    if (lx.stream == 1) {
+        unsafe {
+            lx.tok.kind = kind;
+            lx.tok.line = line;
+            lx.tok.col = col;
+            lx.tok.num = num;
+            lx.tok.fp = fp;
+            lx.tok.sp = sp;
+            lx.tok.slen = slen;
+        }
+        lx.hit = 1;
+        return 1;
+    }
     if (lex_tcap(lx, lx.ntok + 1) == 0) {
         lex_set(lx, line, "out of memory" as ptr<u8>);
         return 0;
@@ -654,6 +672,14 @@ fn lex_free(lx: &mut Lexer) {
             }
             i = i + 1;
         }
+        if (lx.cur.kind == TK_STR && lx.cur.sp != null) {
+            free(lx.cur.sp);
+            lx.cur.sp = null;
+        }
+        if (lx.peek.kind == TK_STR && lx.peek.sp != null) {
+            free(lx.peek.sp);
+            lx.peek.sp = null;
+        }
         if (lx.t != null) {
             free(lx.t as ptr<u8>);
         }
@@ -668,7 +694,7 @@ fn lex_free(lx: &mut Lexer) {
     lx.wbcap = 0;
 }
 
-fn lex_run(lx: &mut Lexer, src: ptr<u8>, len: i64) -> i32 {
+fn lex_begin(lx: &mut Lexer, src: ptr<u8>, len: i64) {
     lx.src = src;
     lx.len = len;
     lx.i = 0;
@@ -679,90 +705,238 @@ fn lex_run(lx: &mut Lexer, src: ptr<u8>, len: i64) -> i32 {
     unsafe {
         lx.err[0] = 0;
     }
+}
 
-    while (lx.i < len) {
-        let c: u8 = lex_byte(src, lx.i);
+fn lex_scan(lx: &mut Lexer, src: ptr<u8>, len: i64) -> i32 {
+    lx.hit = 0;
+    var i: i64 = lx.i;
+    var line: i64 = lx.line;
+    var col: i64 = lx.col;
+    while (i < len) {
+        var c: u8 = 0;
+        unsafe { c = src[i]; }
+        if (c == 32 || c == 9 || c == 13) {
+            i = i + 1;
+            col = col + 1;
+            continue;
+        }
         if (c == 10) {
-            lx.i = lx.i + 1;
-            lx.line = lx.line + 1;
-            lx.col = 1;
-        } else if (c == 32 || c == 9 || c == 13) {
-            lx.i = lx.i + 1;
-            lx.col = lx.col + 1;
-        } else if (c == 47 && lx.i + 1 < len && lex_byte(src, lx.i + 1) == 47) {
-            while (lx.i < len && lex_byte(src, lx.i) != 10) {
-                lx.i = lx.i + 1;
-            }
-        } else if (c == 47 && lx.i + 1 < len && lex_byte(src, lx.i + 1) == 42) {
-            lx.i = lx.i + 2;
-            lx.col = lx.col + 2;
-            var shut: i32 = 0;
-            while (shut == 0) {
-                if (lx.i + 1 >= len) {
-                    lex_set(lx, lx.line, "unterminated block comment" as ptr<u8>);
-                    return 0;
+            i = i + 1;
+            line = line + 1;
+            col = 1;
+            continue;
+        }
+        if (c == 47 && i + 1 < len) {
+            var d: u8 = 0;
+            unsafe { d = src[i + 1]; }
+            if (d == 47) {
+                i = i + 2;
+                while (i < len) {
+                    var e: u8 = 0;
+                    unsafe { e = src[i]; }
+                    if (e == 10) {
+                        break;
+                    }
+                    i = i + 1;
                 }
-                if (lex_byte(src, lx.i) == 42 && lex_byte(src, lx.i + 1) == 47) {
-                    lx.i = lx.i + 2;
-                    lx.col = lx.col + 2;
-                    shut = 1;
-                } else if (lex_byte(src, lx.i) == 10) {
-                    lx.line = lx.line + 1;
-                    lx.col = 1;
-                    lx.i = lx.i + 1;
-                } else {
-                    lx.i = lx.i + 1;
-                    lx.col = lx.col + 1;
+                continue;
+            }
+            if (d == 42) {
+                i = i + 2;
+                col = col + 2;
+                var shut: i32 = 0;
+                while (shut == 0) {
+                    if (i + 1 >= len) {
+                        lx.i = i;
+                        lx.line = line;
+                        lx.col = col;
+                        lex_set(lx, line, "unterminated block comment" as ptr<u8>);
+                        return 0;
+                    }
+                    var a: u8 = 0;
+                    var b: u8 = 0;
+                    unsafe {
+                        a = src[i];
+                        b = src[i + 1];
+                    }
+                    if (a == 42 && b == 47) {
+                        i = i + 2;
+                        col = col + 2;
+                        shut = 1;
+                    } else if (a == 10) {
+                        line = line + 1;
+                        col = 1;
+                        i = i + 1;
+                    } else {
+                        i = i + 1;
+                        col = col + 1;
+                    }
                 }
+                continue;
             }
-        } else if (lex_is_alpha(c) || c == 95) {
-            let start: i64 = lx.i;
-            let sline: i64 = lx.line;
-            let scol: i64 = lx.col;
-            while (lx.i < len && (lex_is_alnum(lex_byte(src, lx.i)) || lex_byte(src, lx.i) == 95)) {
-                lx.i = lx.i + 1;
-                lx.col = lx.col + 1;
+        }
+        if (c >= 97 && c <= 122) {
+            if (lex_ident(lx, src, len, i, line, col) == 0) {
+                return 0;
             }
-            let stop: i64 = lx.i;
-            unsafe {
-                if (lex_push(lx, TK_IDENT, sline, scol, 0, 0.0, src + start, stop - start) == 0) {
-                    return 0;
-                }
+            i = lx.i;
+            col = lx.col;
+            line = lx.line;
+            if (lx.stream == 1 && lx.hit == 1) {
+                return 1;
             }
-        } else if (lex_is_digit(c)) {
+            continue;
+        }
+        if (c >= 65 && c <= 90) {
+            if (lex_ident(lx, src, len, i, line, col) == 0) {
+                return 0;
+            }
+            i = lx.i;
+            col = lx.col;
+            line = lx.line;
+            if (lx.stream == 1 && lx.hit == 1) {
+                return 1;
+            }
+            continue;
+        }
+        if (c == 95) {
+            if (lex_ident(lx, src, len, i, line, col) == 0) {
+                return 0;
+            }
+            i = lx.i;
+            col = lx.col;
+            line = lx.line;
+            if (lx.stream == 1 && lx.hit == 1) {
+                return 1;
+            }
+            continue;
+        }
+        if (c >= 48 && c <= 57) {
+            lx.i = i;
+            lx.line = line;
+            lx.col = col;
             if (lex_number(lx, src, len, c) == 0) {
                 return 0;
             }
-        } else if (c == 34) {
+            i = lx.i;
+            line = lx.line;
+            col = lx.col;
+            if (lx.stream == 1 && lx.hit == 1) {
+                return 1;
+            }
+            continue;
+        }
+        if (c == 34) {
+            lx.i = i;
+            lx.line = line;
+            lx.col = col;
             if (lex_str(lx, src, len) == 0) {
                 return 0;
             }
-        } else {
-            let sline: i64 = lx.line;
-            let scol: i64 = lx.col;
-            var sl: i64 = 0;
-            unsafe {
-                sl = lex_sym_len(src + lx.i, len - lx.i);
+            i = lx.i;
+            line = lx.line;
+            col = lx.col;
+            if (lx.stream == 1 && lx.hit == 1) {
+                return 1;
             }
-            if (sl == 0) {
-                lex_setc(lx, sline, "unexpected character '%c'" as ptr<u8>, c as i32);
+            continue;
+        }
+        let sline: i64 = line;
+        var sl: i64 = 0;
+        unsafe {
+            sl = lex_sym_len(src + i, len - i);
+        }
+        if (sl == 0) {
+            lx.i = i;
+            lx.line = line;
+            lx.col = col;
+            lex_setc(lx, sline, "unexpected character '%c'" as ptr<u8>, c as i32);
+            return 0;
+        }
+        col = col + sl;
+        unsafe {
+            if (lex_push(lx, TK_SYM, sline, col - sl, 0, 0.0, src + i, sl) == 0) {
                 return 0;
             }
-            unsafe {
-                if (lex_push(lx, TK_SYM, sline, scol, 0, 0.0, src + lx.i, sl) == 0) {
-                    return 0;
-                }
-            }
-            lx.i = lx.i + sl;
-            lx.col = lx.col + sl;
+        }
+        i = i + sl;
+        if (lx.stream == 1 && lx.hit == 1) {
+            lx.i = i;
+            lx.line = line;
+            lx.col = col;
+            return 1;
         }
     }
 
+    lx.i = i;
+    lx.line = line;
+    lx.col = col;
     unsafe {
-        if (lex_push(lx, TK_EOF, lx.line, lx.col, 0, 0.0, src + len, 0) == 0) {
+        if (lex_push(lx, TK_EOF, line, col, 0, 0.0, src + len, 0) == 0) {
             return 0;
         }
     }
+    return 1;
+}
+
+fn lex_ident(lx: &mut Lexer, src: ptr<u8>, len: i64, at: i64, line: i64, col: i64) -> i32 {
+    var i: i64 = at;
+    while (i < len) {
+        var d: u8 = 0;
+        unsafe { d = src[i]; }
+        if (d >= 97 && d <= 122) {
+            i = i + 1;
+        } else if (d >= 65 && d <= 90) {
+            i = i + 1;
+        } else if (d >= 48 && d <= 57) {
+            i = i + 1;
+        } else if (d == 95) {
+            i = i + 1;
+        } else {
+            break;
+        }
+    }
+    lx.i = i;
+    lx.line = line;
+    lx.col = col + (i - at);
+    unsafe {
+        return lex_push(lx, TK_IDENT, line, col, 0, 0.0, src + at, i - at);
+    }
+}
+
+fn lex_run(lx: &mut Lexer, src: ptr<u8>, len: i64) -> i32 {
+    lx.stream = 0;
+    lex_begin(lx, src, len);
+    return lex_scan(lx, src, len);
+}
+
+fn lex_open(lx: &mut Lexer, src: ptr<u8>, len: i64) -> i32 {
+    lx.stream = 1;
+    lex_begin(lx, src, len);
+    if (lex_scan(lx, src, len) == 0) {
+        return 0;
+    }
+    lx.cur = lx.tok;
+    if (lex_scan(lx, src, len) == 0) {
+        return 0;
+    }
+    lx.peek = lx.tok;
+    return 1;
+}
+
+fn lex_advance(lx: &mut Lexer) -> i32 {
+    if (lx.cur.kind == TK_STR && lx.cur.sp != null) {
+        free(lx.cur.sp);
+        lx.cur.sp = null;
+    }
+    lx.cur = lx.peek;
+    if (lx.cur.kind == TK_EOF) {
+        return 1;
+    }
+    if (lex_scan(lx, lx.src, lx.len) == 0) {
+        return 0;
+    }
+    lx.peek = lx.tok;
     return 1;
 }
 

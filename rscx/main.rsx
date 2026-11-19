@@ -3,7 +3,6 @@ include "parse.rsx";
 extern "kernel32" fn GetCommandLineA() -> ptr<u8>;
 extern "kernel32" fn GetStdHandle(kind: i32) -> i64;
 extern "kernel32" fn ReadFile(h: i64, buf: ptr<u8>, want: u32, got: ptr<u32>, ov: ptr<u8>) -> i32;
-extern "kernel32" fn WriteFile(h: i64, buf: ptr<u8>, n: u32, wrote: ptr<u32>, ov: ptr<u8>) -> i32;
 extern "kernel32" fn CreateFileA(path: ptr<u8>, access: u32, share: u32, sa: ptr<u8>, disp: u32,
                                  flags: u32, tmpl: i64) -> i64;
 extern "kernel32" fn CloseHandle(h: i64) -> i32;
@@ -14,8 +13,11 @@ extern "kernel32" fn VirtualAlloc(addr: ptr<u8>, size: u64, kind: u32, protect: 
 extern "kernel32" fn GetEnvironmentVariableA(name: ptr<u8>, buf: ptr<u8>, n: u32) -> u32;
 extern "kernel32" fn QueryPerformanceCounter(c: ptr<i64>) -> i32;
 extern "kernel32" fn QueryPerformanceFrequency(f: ptr<i64>) -> i32;
+extern "kernel32" fn GetFileSizeEx(h: i64, size: ptr<i64>) -> i32;
+extern "kernel32" fn GetCurrentProcess() -> i64;
+extern "kernel32" fn K32GetProcessMemoryInfo(h: i64, pmc: ptr<u8>, cb: u32) -> i32;
 
-const SRC_MAX: i64 = 8388608;
+const READ_CHUNK: i64 = 1048576;
 const PATH_MAX: i64 = 1024;
 
 struct Buf {
@@ -33,6 +35,32 @@ struct Clock {
     start: i64,
     prev: i64,
     freq: i64
+}
+
+struct Pmc {
+    cb: u32,
+    faults: u32,
+    peak: u64,
+    ws: u64,
+    quota_peak_paged: u64,
+    quota_paged: u64,
+    quota_peak_npaged: u64,
+    quota_npaged: u64,
+    pagefile: u64,
+    peak_pagefile: u64
+}
+
+fn peak_mb() -> i64 {
+    var m: Pmc = zero(Pmc);
+    m.cb = 72;
+    var ok: i32 = 0;
+    unsafe {
+        ok = K32GetProcessMemoryInfo(GetCurrentProcess(), &m as ptr<u8>, 72);
+    }
+    if (ok == 0) {
+        return 0;
+    }
+    return (m.peak / 1048576) as i64;
 }
 
 fn a_len(s: ptr<u8>) -> i64 {
@@ -289,21 +317,34 @@ fn join_into(dir: ptr<u8>, dlen: i64, name: ptr<u8>, out: ptr<u8>) {
 
 fn read_file(path: ptr<u8>) -> Buf {
     var r: Buf = zero(Buf);
-    r.p = a_buf(SRC_MAX + 1);
     r.n = 0 - 1;
-    if (r.p == null) {
-        return r;
-    }
     let h: i64 = CreateFileA(path, 0x80000000, 1, null, 3, 0x80, 0);
     if (h == -1) {
         return r;
     }
+    var size: i64 = 0;
+    var sized: i32 = 0;
+    unsafe { sized = GetFileSizeEx(h, &size as ptr<i64>); }
+    if (sized != 1 || size < 0) {
+        CloseHandle(h);
+        return r;
+    }
+    r.p = a_buf(size + 1);
+    if (r.p == null) {
+        CloseHandle(h);
+        return r;
+    }
     var got: u32 = 0;
     var total: i64 = 0;
+    var want: i64 = 0;
     var ok: i32 = 1;
     unsafe {
-        while (total < SRC_MAX) {
-            ok = ReadFile(h, r.p + total, (SRC_MAX - total) as u32, &got as ptr<u32>, null);
+        while (total < size) {
+            want = size - total;
+            if (want > READ_CHUNK) {
+                want = READ_CHUNK;
+            }
+            ok = ReadFile(h, r.p + total, want as u32, &got as ptr<u32>, null);
             if (ok != 1 || got == 0) {
                 break;
             }
@@ -314,16 +355,6 @@ fn read_file(path: ptr<u8>) -> Buf {
     CloseHandle(h);
     r.n = total;
     return r;
-}
-
-fn write_file(path: ptr<u8>, p: ptr<u8>, n: i64) -> i32 {
-    let h: i64 = CreateFileA(path, 0x40000000, 0, null, 2, 0x80, 0);
-    if (h == -1) {
-        return 1;
-    }
-    host_write(h, p, n);
-    CloseHandle(h);
-    return 0;
 }
 
 fn seen_new() -> Seen {
@@ -506,6 +537,43 @@ fn find_include(from: ptr<u8>, name: ptr<u8>, out: ptr<u8>) -> i32 {
     return 0;
 }
 
+fn exp_plain(p: ptr<u8>, n: i64) -> i32 {
+    var at: i64 = 0;
+    unsafe {
+        while (at < n) {
+            var k: i64 = at;
+            while (k < n && (p[k] == 32 || p[k] == 9)) {
+                k += 1;
+            }
+            if (k + 7 <= n) {
+                if (p[k] == 105 && p[k + 1] == 110 && p[k + 2] == 99 && p[k + 3] == 108
+                    && p[k + 4] == 117 && p[k + 5] == 100 && p[k + 6] == 101) {
+                    return 0;
+                }
+            }
+            var j: i64 = at;
+            while (j < n) {
+                let c: u8 = p[j];
+                if (c == 10) {
+                    break;
+                }
+                if (c == 13) {
+                    return 0;
+                }
+                if (c == 47 && j + 1 < n) {
+                    let d: u8 = p[j + 1];
+                    if (d == 47 || d == 42) {
+                        return 0;
+                    }
+                }
+                j += 1;
+            }
+            at = j + 1;
+        }
+    }
+    return 1;
+}
+
 fn expand(path: ptr<u8>, depth: i32, seen: &mut Seen, out: &mut Sb, msg: &mut Sb) -> i32 {
     if (depth > 16) {
         sb_puts(msg, "includes nested more than 16 deep, here at '");
@@ -525,7 +593,16 @@ fn expand(path: ptr<u8>, depth: i32, seen: &mut Seen, out: &mut Sb, msg: &mut Sb
         sb_puts(msg, "': The system cannot find the file specified. (os error 2)");
         return 0;
     }
-    var line: ptr<u8> = a_buf(SRC_MAX + 1);
+    if (exp_plain(b.p, b.n) == 1) {
+        sb_put(out, b.p, b.n);
+        var last: u8 = 0;
+        unsafe { last = b.p[b.n - 1]; }
+        if (b.n > 0 && last != 10) {
+            sb_putc(out, 10);
+        }
+        return 1;
+    }
+    var line: ptr<u8> = a_buf(b.n + 1);
     var fname: ptr<u8> = a_buf(PATH_MAX);
     var hit: ptr<u8> = a_buf(PATH_MAX);
     var in_block: i32 = 0;
@@ -600,6 +677,16 @@ fn usage() -> i32 {
     return 2;
 }
 
+fn env_on(name: ptr<u8>) -> i32 {
+    var v: ptr<u8> = null;
+    unsafe { v = a_buf(8); }
+    let got: u32 = GetEnvironmentVariableA(name, v, 8);
+    if (got > 0) {
+        return 1;
+    }
+    return 0;
+}
+
 fn clock_new() -> Clock {
     var c: Clock = zero(Clock);
     var f: i64 = 0;
@@ -640,7 +727,9 @@ fn clock_stamp(c: &mut Clock, name: ptr<u8>) {
     sb_fixed(&mut b, ms, 7, 2);
     sb_puts(&mut b, " ms  (cum ");
     sb_fixed(&mut b, cum, 7, 2);
-    sb_puts(&mut b, ")");
+    sb_puts(&mut b, ")  peak ");
+    sb_i64(&mut b, peak_mb());
+    sb_puts(&mut b, " MB");
     err_b(b.p, b.n);
     host_write(GetStdHandle(-12), "\n" as ptr<u8>, 1);
     sb_free(&mut b);
@@ -778,6 +867,21 @@ fn main() -> i32 {
     }
     clock_stamp(&mut clk, "expand" as ptr<u8>);
     var f: Fr = fr_new();
+    if (dump == 1) {
+        if (fr_lex_all(&mut f, src.p, src.n) == 0) {
+            var ep0: ptr<u8> = null;
+            var el0: i64 = 0;
+            unsafe {
+                ep0 = fr_err_ptr(&mut f);
+                el0 = fr_err_len(&mut f);
+            }
+            let r0: i32 = die(input, ep0, el0);
+            return r0;
+        }
+        clock_stamp(&mut clk, "lex" as ptr<u8>);
+        dump_tokens(&mut f);
+        return 0;
+    }
     if (fr_lex(&mut f, src.p, src.n) == 0) {
         var ep: ptr<u8> = null;
         var el: i64 = 0;
@@ -788,9 +892,11 @@ fn main() -> i32 {
         let r: i32 = die(input, ep, el);
         return r;
     }
-    clock_stamp(&mut clk, "lex" as ptr<u8>);
-    if (dump == 1) {
-        dump_tokens(&mut f);
+    if (env_on("RSC_LEXONLY" as ptr<u8>) == 1) {
+        while (p_kind(&mut f, f.i) != TK_EOF) {
+            p_bump(&mut f);
+        }
+        clock_stamp(&mut clk, "lexall" as ptr<u8>);
         return 0;
     }
     var p: Pr = fr_parse(&mut f);
@@ -806,22 +912,57 @@ fn main() -> i32 {
     }
     clock_stamp(&mut clk, "parse" as ptr<u8>);
     var ir: Sb = sb_new(65536);
-    fr_emit(&mut f, &mut p, &mut ir);
-    clock_stamp(&mut clk, "emit" as ptr<u8>);
+    var out_h: i64 = 0;
+    var out_bad: i32 = 0;
     if (have_out == 1) {
-        if (write_file(out_path, ir.p, ir.n) != 0) {
-            var b: Sb = sb_new(256);
-            sb_puts(&mut b, "rsc: cannot write '");
-            sb_puts(&mut b, out_path);
-            sb_puts(&mut b, "': permission denied (os error 5)");
-            err_b(b.p, b.n);
-            host_write(GetStdHandle(-12), "\n" as ptr<u8>, 1);
-            sb_free(&mut b);
-            return 1;
+        out_h = CreateFileA(out_path, 0x40000000, 0, null, 2, 0x80, 0);
+        if (out_h == -1) {
+            out_h = 0;
+            out_bad = 1;
         }
+        sb_spill(&mut ir, out_h);
     } else {
-        out_b(ir.p, ir.n);
+        sb_spill(&mut ir, GetStdHandle(-11));
+    }
+    if (out_bad == 0) {
+        fr_emit(&mut f, &mut p, &mut ir);
+        sb_flush(&mut ir);
+    }
+    if (out_h != 0) {
+        CloseHandle(out_h);
+    }
+    if (out_bad == 1) {
+        var b: Sb = sb_new(256);
+        sb_puts(&mut b, "rsc: cannot write '");
+        sb_puts(&mut b, out_path);
+        sb_puts(&mut b, "': permission denied (os error 5)");
+        err_b(b.p, b.n);
+        host_write(GetStdHandle(-12), "\n" as ptr<u8>, 1);
+        sb_free(&mut b);
+        return 1;
     }
     clock_stamp(&mut clk, "write" as ptr<u8>);
+    if (clk.on == 1) {
+        var b: Sb = sb_new(160);
+        sb_puts(&mut b, "rsc: nodes ");
+        sb_i64(&mut b, f.na.n);
+        sb_puts(&mut b, " x ");
+        sb_i64(&mut b, sizeof(Nd) as i64);
+        sb_puts(&mut b, " B, blocks ");
+        sb_i64(&mut b, f.na.nb);
+        sb_puts(&mut b, " lists ");
+        sb_i64(&mut b, f.lp.n);
+        sb_puts(&mut b, " strings ");
+        sb_i64(&mut b, f.sp.n);
+        sb_puts(&mut b, " ir ");
+        sb_i64(&mut b, ir.total + ir.n);
+        sb_puts(&mut b, " lpMB ");
+        sb_i64(&mut b, lp_bytes(&mut f.lp) >> 20);
+        sb_puts(&mut b, " spMB ");
+        sb_i64(&mut b, (f.sp.bn + f.sp.n * 16) >> 20);
+        err_b(b.p, b.n);
+        host_write(GetStdHandle(-12), "\n" as ptr<u8>, 1);
+        sb_free(&mut b);
+    }
     return 0;
 }

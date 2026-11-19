@@ -36,53 +36,53 @@ fn fv_yes(v: f64) -> Fv {
 
 fn fx_take(x: &mut Bp, dst: i64, src: i64) {
     var t: i64 = 0;
-    unsafe { t = x.na.v[dst].ty; }
-    unsafe { x.na.v[dst] = x.na.v[src]; }
-    unsafe { x.na.v[dst].ty = t; }
+    unsafe { t = (na_at(x.na.v, dst).ty as i64); }
+    na_copy(x.na.v, dst, src);
+    unsafe { na_at(x.na.v, dst).ty = ( t) as i32; }
 }
 
 fn fx_kind(x: &mut Bp, e: i64) -> i32 {
     var k: i32 = 0;
-    unsafe { k = x.na.v[e].k; }
+    unsafe { k = na_at(x.na.v, e).k; }
     return k;
 }
 
 fn fx_ivar(x: &mut Bp, e: i64) -> i64 {
     var v: i64 = 0;
-    unsafe { v = x.na.v[e].n; }
+    unsafe { v = na_at(x.na.v, e).n; }
     return v;
 }
 
 fn fx_fval(x: &mut Bp, e: i64) -> f64 {
     var v: f64 = 0.0;
-    unsafe { v = x.na.v[e].f; }
+    unsafe { v = na_at(x.na.v, e).f; }
     return v;
 }
 
 fn fx_ty(x: &mut Bp, e: i64) -> i64 {
     var v: i64 = 0;
-    unsafe { v = x.na.v[e].ty; }
+    unsafe { v = (na_at(x.na.v, e).ty as i64); }
     return v;
 }
 
 fn fx_set_int(x: &mut Bp, e: i64, v: i64) {
     unsafe {
-        x.na.v[e].k = EX_INT;
-        x.na.v[e].n = v;
+        na_at(x.na.v, e).k = EX_INT;
+        na_at(x.na.v, e).n = v;
     }
 }
 
 fn fx_set_float(x: &mut Bp, e: i64, v: f64) {
     unsafe {
-        x.na.v[e].k = EX_FLOAT;
-        x.na.v[e].f = v;
+        na_at(x.na.v, e).k = EX_FLOAT;
+        na_at(x.na.v, e).f = v;
     }
 }
 
 fn fx_set_bool(x: &mut Bp, e: i64, v: i32) {
     unsafe {
-        x.na.v[e].k = EX_BOOL;
-        x.na.v[e].n = v as i64;
+        na_at(x.na.v, e).k = EX_BOOL;
+        na_at(x.na.v, e).n = v as i64;
     }
 }
 
@@ -218,9 +218,9 @@ fn fx_eval_bool(x: &mut Bp, e: i64) -> Bv {
     var a: i64 = 0;
     var b: i64 = 0;
     unsafe {
-        op = x.na.v[e].s;
-        a = x.na.v[e].a;
-        b = x.na.v[e].b;
+        op = (na_at(x.na.v, e).s as i64);
+        a = (na_at(x.na.v, e).a as i64);
+        b = (na_at(x.na.v, e).b as i64);
     }
     if (k == EX_UN) {
         if (!sp_eqc(&mut x.sp, op, "!")) {
@@ -393,9 +393,9 @@ fn fx_fold_bin(x: &mut Bp, e: i64, op: i64, a: i64, b: i64) {
     var a2: i64 = 0;
     var b2: i64 = 0;
     unsafe {
-        op2 = x.na.v[e].s;
-        a2 = x.na.v[e].a;
-        b2 = x.na.v[e].b;
+        op2 = (na_at(x.na.v, e).s as i64);
+        a2 = (na_at(x.na.v, e).a as i64);
+        b2 = (na_at(x.na.v, e).b as i64);
     }
     fx_fold_const(x, e, op2, a2, b2);
 }
@@ -409,9 +409,9 @@ fn fx_fold_expr(x: &mut Bp, e: i64) {
     var b: i64 = 0;
     var l: i64 = 0;
     unsafe {
-        a = x.na.v[e].a;
-        b = x.na.v[e].b;
-        l = x.na.v[e].l;
+        a = (na_at(x.na.v, e).a as i64);
+        b = (na_at(x.na.v, e).b as i64);
+        l = (na_at(x.na.v, e).l as i64);
     }
     if (k == EX_BIN || k == EX_INDEX) {
         fx_fold_expr(x, a);
@@ -448,12 +448,12 @@ fn fx_fold_expr(x: &mut Bp, e: i64) {
 
     let k2: i32 = fx_kind(x, e);
     var op: i64 = 0;
-    unsafe { op = x.na.v[e].s; }
+    unsafe { op = (na_at(x.na.v, e).s as i64); }
     var c1: i64 = 0;
     var c2: i64 = 0;
     unsafe {
-        c1 = x.na.v[e].a;
-        c2 = x.na.v[e].b;
+        c1 = (na_at(x.na.v, e).a as i64);
+        c2 = (na_at(x.na.v, e).b as i64);
     }
     if (k2 == EX_UN) {
         if (sp_eqc(&mut x.sp, op, "-")) {
@@ -508,15 +508,15 @@ fn fx_new(x: &mut Bp, tag: i32) -> i64 {
 
 fn fx_block(x: &mut Bp, l: i64) -> i64 {
     let n: i64 = fx_new(x, ST_BLOCK);
-    unsafe { x.na.v[n].l = l; }
+    unsafe { na_at(x.na.v, n).l = ( l) as i32; }
     return n;
 }
 
 fn fx_clone(x: &mut Bp, st: i64) -> i64 {
     var k: i32 = 0;
-    unsafe { k = x.na.v[st].k; }
+    unsafe { k = na_at(x.na.v, st).k; }
     let n: i64 = fx_new(x, k);
-    unsafe { x.na.v[n] = x.na.v[st]; }
+    na_copy(x.na.v, n, st);
     return n;
 }
 
@@ -542,10 +542,10 @@ fn fx_prune_stmt(x: &mut Bp, st: i64) -> i64 {
     let k: i32 = fx_kind(x, st);
     if (k == ST_BLOCK || k == ST_UNSAFE) {
         var l: i64 = 0;
-        unsafe { l = x.na.v[st].l; }
+        unsafe { l = (na_at(x.na.v, st).l as i64); }
         let nl: i64 = fx_prune(x, l);
         let n: i64 = fx_clone(x, st);
-        unsafe { x.na.v[n].l = nl; }
+        unsafe { na_at(x.na.v, n).l = ( nl) as i32; }
         return n;
     }
     if (k == ST_IF) {
@@ -553,9 +553,9 @@ fn fx_prune_stmt(x: &mut Bp, st: i64) -> i64 {
         var th: i64 = 0;
         var el: i64 = 0;
         unsafe {
-            c = x.na.v[st].a;
-            th = x.na.v[st].l;
-            el = x.na.v[st].l2;
+            c = (na_at(x.na.v, st).a as i64);
+            th = (na_at(x.na.v, st).l as i64);
+            el = (na_at(x.na.v, st).l2 as i64);
         }
         fx_fold_expr(x, c);
         let nt: i64 = fx_prune(x, th);
@@ -578,9 +578,9 @@ fn fx_prune_stmt(x: &mut Bp, st: i64) -> i64 {
         }
         let n2: i64 = fx_clone(x, st);
         unsafe {
-            x.na.v[n2].a = c;
-            x.na.v[n2].l = nt;
-            x.na.v[n2].l2 = ne;
+            na_at(x.na.v, n2).a = ( c) as i32;
+            na_at(x.na.v, n2).l = ( nt) as i32;
+            na_at(x.na.v, n2).l2 = ( ne) as i32;
         }
         return n2;
     }
@@ -588,8 +588,8 @@ fn fx_prune_stmt(x: &mut Bp, st: i64) -> i64 {
         var c2: i64 = 0;
         var bd: i64 = 0;
         unsafe {
-            c2 = x.na.v[st].a;
-            bd = x.na.v[st].l;
+            c2 = (na_at(x.na.v, st).a as i64);
+            bd = (na_at(x.na.v, st).l as i64);
         }
         fx_fold_expr(x, c2);
         let nb: i64 = fx_prune(x, bd);
@@ -599,17 +599,17 @@ fn fx_prune_stmt(x: &mut Bp, st: i64) -> i64 {
         }
         let n3: i64 = fx_clone(x, st);
         unsafe {
-            x.na.v[n3].a = c2;
-            x.na.v[n3].l = nb;
+            na_at(x.na.v, n3).a = ( c2) as i32;
+            na_at(x.na.v, n3).l = ( nb) as i32;
         }
         return n3;
     }
     if (k == ST_LOOP) {
         var l2: i64 = 0;
-        unsafe { l2 = x.na.v[st].l; }
+        unsafe { l2 = (na_at(x.na.v, st).l as i64); }
         let nl2: i64 = fx_prune(x, l2);
         let n4: i64 = fx_clone(x, st);
-        unsafe { x.na.v[n4].l = nl2; }
+        unsafe { na_at(x.na.v, n4).l = ( nl2) as i32; }
         return n4;
     }
     if (k == ST_FOR) {
@@ -617,18 +617,18 @@ fn fx_prune_stmt(x: &mut Bp, st: i64) -> i64 {
         var b2: i64 = 0;
         var l3: i64 = 0;
         unsafe {
-            a2 = x.na.v[st].a;
-            b2 = x.na.v[st].b;
-            l3 = x.na.v[st].l;
+            a2 = (na_at(x.na.v, st).a as i64);
+            b2 = (na_at(x.na.v, st).b as i64);
+            l3 = (na_at(x.na.v, st).l as i64);
         }
         fx_fold_expr(x, a2);
         fx_fold_expr(x, b2);
         let nl3: i64 = fx_prune(x, l3);
         let n5: i64 = fx_clone(x, st);
         unsafe {
-            x.na.v[n5].a = a2;
-            x.na.v[n5].b = b2;
-            x.na.v[n5].l = nl3;
+            na_at(x.na.v, n5).a = ( a2) as i32;
+            na_at(x.na.v, n5).b = ( b2) as i32;
+            na_at(x.na.v, n5).l = ( nl3) as i32;
         }
         return n5;
     }
@@ -636,8 +636,8 @@ fn fx_prune_stmt(x: &mut Bp, st: i64) -> i64 {
         var sc: i64 = 0;
         var arms: i64 = 0;
         unsafe {
-            sc = x.na.v[st].a;
-            arms = x.na.v[st].l;
+            sc = (na_at(x.na.v, st).a as i64);
+            arms = (na_at(x.na.v, st).l as i64);
         }
         fx_fold_expr(x, sc);
         let na: i64 = lp_add(&mut x.lp);
@@ -646,30 +646,30 @@ fn fx_prune_stmt(x: &mut Bp, st: i64) -> i64 {
         while (i < cnt) {
             let arm: i64 = lp_get(&mut x.lp, arms, i);
             var bl: i64 = 0;
-            unsafe { bl = x.na.v[arm].l; }
+            unsafe { bl = (na_at(x.na.v, arm).l as i64); }
             let nbl: i64 = fx_prune(x, bl);
             let na2: i64 = fx_new(x, AR_ARM);
-            unsafe { x.na.v[na2] = x.na.v[arm]; }
-            unsafe { x.na.v[na2].l = nbl; }
+            na_copy(x.na.v, na2, arm);
+            unsafe { na_at(x.na.v, na2).l = ( nbl) as i32; }
             lp_push(&mut x.lp, na, na2);
             i += 1;
         }
         let n6: i64 = fx_clone(x, st);
         unsafe {
-            x.na.v[n6].a = sc;
-            x.na.v[n6].l = na;
+            na_at(x.na.v, n6).a = ( sc) as i32;
+            na_at(x.na.v, n6).l = ( na) as i32;
         }
         return n6;
     }
     if (k == ST_EXPR) {
         var e1: i64 = 0;
-        unsafe { e1 = x.na.v[st].a; }
+        unsafe { e1 = (na_at(x.na.v, st).a as i64); }
         fx_fold_expr(x, e1);
         return st;
     }
     if (k == ST_LET) {
         var init: i64 = 0;
-        unsafe { init = x.na.v[st].b; }
+        unsafe { init = (na_at(x.na.v, st).b as i64); }
         fx_fold_expr(x, init);
         return st;
     }
@@ -677,8 +677,8 @@ fn fx_prune_stmt(x: &mut Bp, st: i64) -> i64 {
         var lhs: i64 = 0;
         var rhs: i64 = 0;
         unsafe {
-            lhs = x.na.v[st].a;
-            rhs = x.na.v[st].b;
+            lhs = (na_at(x.na.v, st).a as i64);
+            rhs = (na_at(x.na.v, st).b as i64);
         }
         fx_fold_expr(x, lhs);
         fx_fold_expr(x, rhs);
@@ -686,7 +686,7 @@ fn fx_prune_stmt(x: &mut Bp, st: i64) -> i64 {
     }
     if (k == ST_RETURN) {
         var rv: i64 = 0;
-        unsafe { rv = x.na.v[st].a; }
+        unsafe { rv = (na_at(x.na.v, st).a as i64); }
         fx_fold_expr(x, rv);
         return st;
     }
@@ -699,7 +699,7 @@ fn fx_run(x: &mut Bp, p: &mut Pr) {
     while (i < nc) {
         let it: i64 = lp_get(&mut x.lp, p.c, i);
         var v: i64 = 0;
-        unsafe { v = x.na.v[it].b; }
+        unsafe { v = (na_at(x.na.v, it).b as i64); }
         fx_fold_expr(x, v);
         i += 1;
     }
@@ -708,9 +708,9 @@ fn fx_run(x: &mut Bp, p: &mut Pr) {
     while (j < nf) {
         let fn_: i64 = lp_get(&mut x.lp, p.f, j);
         var bd: i64 = 0;
-        unsafe { bd = x.na.v[fn_].l3; }
+        unsafe { bd = (na_at(x.na.v, fn_).l3 as i64); }
         let nbd: i64 = fx_prune(x, bd);
-        unsafe { x.na.v[fn_].l3 = nbd; }
+        unsafe { na_at(x.na.v, fn_).l3 = ( nbd) as i32; }
         j += 1;
     }
 }

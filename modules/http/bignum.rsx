@@ -84,6 +84,9 @@ fn bn_getbit(a: &mut Bn, i: i64) -> i32 {
 
 fn bn_setbit(b: &mut Bn, i: i64, v: i32) {
     let limb: i64 = i / 26;
+    if (limb < 0 || limb >= BN_MAX) {
+        return;
+    }
     let off: i64 = i - limb * 26;
     if (v == 1) {
         b.d[limb] = b.d[limb] | (1 << off);
@@ -137,7 +140,7 @@ fn bn_add(r: &mut Bn, a: &mut Bn, b: &mut Bn) {
         carry = s >> 26;
         i += 1;
     }
-    if (carry != 0) {
+    if (carry != 0 && n < BN_MAX) {
         r.d[n] = carry;
         n += 1;
         i += 1;
@@ -180,7 +183,7 @@ fn bn_shl1(b: &mut Bn) {
         carry = (v >> 25) & 1;
         i += 1;
     }
-    if (carry != 0) {
+    if (carry != 0 && b.n < BN_MAX) {
         b.d[b.n] = carry;
         b.n += 1;
     }

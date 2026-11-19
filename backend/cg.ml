@@ -154,6 +154,7 @@ type g = {
   mutable async_ret : (int * int) option;
   mutable fix : (int * int) list;
   mutable skips : (int * int) list;
+  acache : (string, int) Hashtbl.t;
 
   unchecked : unit ESet.t;
 }
@@ -398,6 +399,137 @@ let to_bool g =
   X.setcc g.x 5 X.rax;
   X.movzx8 g.x X.rax X.rax
 
+let load_slot g dst t off =
+  match t with
+  | TF32 -> X.movss_load g.x 0 X.rbp off
+  | TF64 -> X.movsd_load g.x 0 X.rbp off
+  | TI8 -> X.movsx8_m g.x dst X.rbp off
+  | TI16 -> X.movsx16_m g.x dst X.rbp off
+  | TI32 -> X.movsxd_m g.x dst X.rbp off
+  | TU8 | TBool -> X.movzx8_m g.x dst X.rbp off
+  | TU16 -> X.movzx16_m g.x dst X.rbp off
+  | TU32 -> X.load32 g.x dst X.rbp off
+  | _ -> X.load64 g.x dst X.rbp off
+
+let slot_of g (e : expr) =
+  match e.node with
+  | EVar n -> (
+      match lookup g n with
+      | Some (off, ty) when int_regs ty -> Some (off, ty)
+      | _ -> None)
+  | ECast (a, t) -> (
+      match a.node with
+      | EVar n -> (
+          match lookup g n with
+          | Some (off, sty)
+            when int_regs sty && int_regs t && t <> TBool
+                 && size_of g.info sty >= size_of g.info t ->
+              Some (off, t)
+          | _ -> None)
+      | _ -> None)
+  | _ -> None
+
+let rec pure_e (e : expr) =
+  match e.node with
+  | ECall _ | ECallV _ | EAwait _ | EPoll _ | EBoxNew _ -> false
+  | EBin (_, a, b) | EIndex (a, b) -> pure_e a && pure_e b
+  | EUn (_, a) | ECast (a, _) | EField (a, _) | EDeref a | EAddr a | EAddrMut a -> pure_e a
+  | _ -> true
+
+let rec akey (e : expr) =
+  match e.node with
+  | EVar n -> Some ("v:" ^ n)
+  | EInt k -> Some ("i:" ^ Int64.to_string k)
+  | EBin (op, a, b) -> (
+      match (akey a, akey b) with
+      | Some x, Some y -> Some ("b:" ^ op ^ "(" ^ x ^ "," ^ y ^ ")")
+      | _ -> None)
+  | ECast (a, t) -> (
+      match akey a with Some x -> Some ("c:" ^ to_string t ^ "(" ^ x ^ ")") | None -> None)
+  | EIndex (a, b) -> (
+      match (akey a, akey b) with
+      | Some x, Some y -> Some ("x(" ^ x ^ "," ^ y ^ ")")
+      | _ -> None)
+  | EField (a, f) -> (match akey a with Some x -> Some ("f(" ^ x ^ "," ^ f ^ ")") | None -> None)
+  | EDeref a -> (match akey a with Some x -> Some ("d(" ^ x ^ ")") | None -> None)
+  | _ -> None
+
+let is_cmp = function
+  | "==" | "!=" | "<" | "<=" | ">" | ">=" -> true
+  | _ -> false
+
+let cmp_cc op uns =
+  match op with
+  | "==" -> 4
+  | "!=" -> 5
+  | "<" -> if uns then 2 else 12
+  | "<=" -> if uns then 6 else 14
+  | ">" -> if uns then 7 else 15
+  | ">=" -> if uns then 3 else 13
+  | _ -> fail "unknown comparison '%s'" op
+
+let inv_cc = function
+  | 4 -> 5
+  | 5 -> 4
+  | 12 -> 13
+  | 13 -> 12
+  | 14 -> 15
+  | 15 -> 14
+  | 2 -> 3
+  | 3 -> 2
+  | 6 -> 7
+  | 7 -> 6
+  | c -> c
+
+let bool_of_cc g cc =
+  X.setcc g.x cc X.rax;
+  X.movzx8 g.x X.rax X.rax
+
+let int_arith g op uns dst src =
+  match op with
+  | "+" -> X.add_rr g.x dst src
+  | "-" -> X.sub_rr g.x dst src
+  | "*" -> X.imul_rr g.x dst src
+  | "/" ->
+      if uns then begin
+        X.mov_ri32 g.x X.rdx 0;
+        X.div_rr g.x src
+      end
+      else begin
+        X.cqo g.x;
+        X.idiv_rr g.x src
+      end
+  | "%" ->
+      if uns then begin
+        X.mov_ri32 g.x X.rdx 0;
+        X.div_rr g.x src
+      end
+      else begin
+        X.cqo g.x;
+        X.idiv_rr g.x src
+      end;
+      X.mov_rr64 g.x dst X.rdx
+  | "&" -> X.and_rr g.x dst src
+  | "|" -> X.or_rr g.x dst src
+  | "^" -> X.xor_rr g.x dst src
+  | "<<" -> X.shl_cl g.x dst
+  | ">>" -> if uns then X.shr_cl g.x dst else X.sar_cl g.x dst
+  | _ -> fail "unknown operator '%s'" op
+
+let int_arith_imm g op uns dst ki =
+  match op with
+  | "+" -> X.add_ri g.x dst ki
+  | "-" -> X.sub_ri g.x dst ki
+  | "*" -> X.imul_ri g.x dst ki
+  | "&" -> X.and_ri g.x dst ki
+  | "|" -> X.or_ri g.x dst ki
+  | "^" -> X.xor_ri g.x dst ki
+  | "<<" -> X.shl_imm g.x dst (ki land 63)
+  | ">>" -> if uns then X.shr_imm g.x dst (ki land 63) else X.sar_imm g.x dst (ki land 63)
+  | _ -> fail "unknown operator '%s'" op
+
+let fits32 k = Int64.compare k (-2147483648L) >= 0 && Int64.compare k 2147483647L <= 0
+
 let str_off g s =
   match Hashtbl.find_opt g.strs s with
   | Some o -> o
@@ -464,17 +596,44 @@ let fn_addr g n =
 
 let rec addr g (e : expr) =
   match e.node with
+  | EIndex _ | EField _ -> (
+      match akey e with
+      | Some k -> (
+          match Hashtbl.find_opt g.acache k with
+          | Some slot -> X.load64 g.x X.rax X.rbp slot
+          | None ->
+              addr_raw g e;
+              if pure_e e then begin
+                let slot = scratch g 8 in
+                X.store64 g.x X.rax X.rbp slot;
+                Hashtbl.replace g.acache k slot
+              end)
+      | None -> addr_raw g e)
+  | _ -> addr_raw g e
+
+and addr_raw g (e : expr) =
+  match e.node with
   | EVar n -> (
       match lookup g n with
       | Some (off, _) -> X.lea g.x X.rax X.rbp off
       | None -> fail "unknown variable '%s'" n)
   | EField (base, f) ->
       let off = field_off g base f in
-      (match base.ty with
-      | TStruct _ | TTuple _ -> addr g base
-      | TPtr _ | TRef _ | TBox _ -> value g base
-      | t -> fail "field access on %s" (to_string t));
-      if off <> 0 then X.lea g.x X.rax X.rax off
+      (match (base.ty, base.node) with
+      | (TStruct _ | TTuple _), EVar n -> (
+          match lookup g n with
+          | Some (boff, _) -> X.lea g.x X.rax X.rbp (boff + off)
+          | None -> fail "unknown variable '%s'" n)
+      | TStruct _, _ | TTuple _, _ ->
+          addr g base;
+          if off <> 0 then X.lea g.x X.rax X.rax off
+      | (TPtr _ | TRef _ | TBox _), EVar _ -> (
+          value g base;
+          if off <> 0 then X.lea g.x X.rax X.rax off)
+      | (TPtr _ | TRef _ | TBox _), _ -> (
+          value g base;
+          if off <> 0 then X.lea g.x X.rax X.rax off)
+      | t, _ -> fail "field access on %s" (to_string t))
   | EIndex (base, idx) -> (
       let bt = base.ty in
       let et =
@@ -485,12 +644,27 @@ let rec addr g (e : expr) =
       in
       let bound = match peel bt with TArray (_, n) -> Some n | _ -> None in
       let esz = max 1 (size_of g.info et) in
-      let t = scratch g 8 in
-      (match bt with
-      | TArray _ -> addr g base
-      | TPtr _ | TRef _ | TBox _ -> value g base
-      | t -> fail "cannot index %s" (to_string t));
-      X.store64 g.x X.rax X.rbp t;
+      let pow2 = esz <= 8 && esz land (esz - 1) = 0 in
+      let direct =
+        if not (pow2 && pure_e idx) then None
+        else
+          match base.node with
+          | EVar n when (match bt with TArray _ -> true | _ -> false) -> (
+              match lookup g n with Some (boff, _) -> Some (`Arr boff) | None -> None)
+          | EVar n
+            when (match bt with TPtr _ | TRef _ | TBox _ -> true | _ -> false) -> (
+              match lookup g n with Some (boff, _) -> Some (`Ptr boff) | None -> None)
+          | _ -> None
+      in
+      let slot = match direct with Some _ -> 0 | None -> scratch g 8 in
+      (match direct with
+      | Some _ -> ()
+      | None ->
+          (match bt with
+          | TArray _ -> addr g base
+          | TPtr _ | TRef _ | TBox _ -> value g base
+          | t -> fail "cannot index %s" (to_string t));
+          X.store64 g.x X.rax X.rbp slot);
       value g idx;
       (match bound with
       | Some _ when ESet.mem g.unchecked e -> ()
@@ -505,12 +679,18 @@ let rec addr g (e : expr) =
               X.ud2 g.x;
               place g ok)
       | None -> ());
-      if esz <> 1 then begin
-        X.mov_ri32 g.x X.rcx esz;
-        X.imul_rr g.x X.rax X.rcx
-      end;
-      X.load64 g.x X.rcx X.rbp t;
-      X.add_rr g.x X.rax X.rcx)
+      match direct with
+      | Some (`Arr boff) -> X.lea_s g.x X.rax X.rbp X.rax esz boff
+      | Some (`Ptr boff) ->
+          X.load64 g.x X.rcx X.rbp boff;
+          X.lea_s g.x X.rax X.rcx X.rax esz 0
+      | None ->
+          if esz <> 1 then begin
+            X.mov_ri32 g.x X.rcx esz;
+            X.imul_rr g.x X.rax X.rcx
+          end;
+          X.load64 g.x X.rcx X.rbp slot;
+          X.add_rr g.x X.rax X.rcx)
   | EDeref p -> value g p
   | EAddr a | EAddrMut a -> addr g a
   | EAwait a ->
@@ -757,73 +937,47 @@ and binop g op a b =
         | _ -> fail "operator '%s' does not apply to %s" op (to_string a.ty)
       end
       else begin
-        scalar g a;
-        X.store64 g.x X.rax X.rbp t;
-        scalar g b;
-        X.mov_rr64 g.x X.rcx X.rax;
-        X.load64 g.x X.rax X.rbp t;
         let uns = not (is_signed a.ty) in
-        (match peel a.ty with
-        | TPtr et when op = "+" || op = "-" ->
-            let esz = max 1 (size_of g.info et) in
-            if esz <> 1 then begin
-              X.mov_ri32 g.x X.rdx esz;
-              X.imul_rr g.x X.rcx X.rdx
+        let factor =
+          match peel a.ty with TPtr et -> max 1 (size_of g.info et) | _ -> 1
+        in
+        let scaled k =
+          if factor = 1 || not (op = "+" || op = "-") then k
+          else Int64.mul k (Int64.of_int factor)
+        in
+        let imm_ok =
+          match op with
+          | "+" | "-" | "*" | "&" | "|" | "^" | "<<" | ">>" -> true
+          | o -> is_cmp o
+        in
+        let done_with dst src = if is_cmp op then (X.cmp_rr g.x dst src; bool_of_cc g (cmp_cc op uns))
+          else int_arith g op uns dst src in
+        match b.node with
+        | EInt k0 when imm_ok && fits32 (scaled k0) ->
+            let ki = Int64.to_int (scaled k0) in
+            scalar g a;
+            if is_cmp op then begin
+              X.cmp_ri g.x X.rax ki;
+              bool_of_cc g (cmp_cc op uns)
             end
-        | _ -> ());
-        match op with
-        | "+" -> X.add_rr g.x X.rax X.rcx
-        | "-" -> X.sub_rr g.x X.rax X.rcx
-        | "*" -> X.imul_rr g.x X.rax X.rcx
-        | "/" ->
-            if uns then begin
-              X.mov_ri32 g.x X.rdx 0;
-              X.div_rr g.x X.rcx
-            end
-            else begin
-              X.cqo g.x;
-              X.idiv_rr g.x X.rcx
-            end
-        | "%" ->
-            if uns then begin
-              X.mov_ri32 g.x X.rdx 0;
-              X.div_rr g.x X.rcx
-            end
-            else begin
-              X.cqo g.x;
-              X.idiv_rr g.x X.rcx
-            end;
-            X.mov_rr64 g.x X.rax X.rdx
-        | "&" -> X.and_rr g.x X.rax X.rcx
-        | "|" -> X.or_rr g.x X.rax X.rcx
-        | "^" -> X.xor_rr g.x X.rax X.rcx
-        | "<<" -> X.shl_cl g.x X.rax
-        | ">>" -> if uns then X.shr_cl g.x X.rax else X.sar_cl g.x X.rax
-        | "==" ->
-            X.cmp_rr g.x X.rax X.rcx;
-            X.setcc g.x 4 X.rax;
-            X.movzx8 g.x X.rax X.rax
-        | "!=" ->
-            X.cmp_rr g.x X.rax X.rcx;
-            X.setcc g.x 5 X.rax;
-            X.movzx8 g.x X.rax X.rax
-        | "<" ->
-            X.cmp_rr g.x X.rax X.rcx;
-            X.setcc g.x (if uns then 2 else 12) X.rax;
-            X.movzx8 g.x X.rax X.rax
-        | "<=" ->
-            X.cmp_rr g.x X.rax X.rcx;
-            X.setcc g.x (if uns then 6 else 14) X.rax;
-            X.movzx8 g.x X.rax X.rax
-        | ">" ->
-            X.cmp_rr g.x X.rax X.rcx;
-            X.setcc g.x (if uns then 7 else 15) X.rax;
-            X.movzx8 g.x X.rax X.rax
-        | ">=" ->
-            X.cmp_rr g.x X.rax X.rcx;
-            X.setcc g.x (if uns then 3 else 13) X.rax;
-            X.movzx8 g.x X.rax X.rax
-        | _ -> fail "unknown operator '%s'" op
+            else int_arith_imm g op uns X.rax ki
+        | _ -> (
+            match slot_of g b with
+            | Some (off, bty) ->
+                scalar g a;
+                load_slot g X.rcx bty off;
+                done_with X.rax X.rcx
+            | None ->
+                scalar g a;
+                X.store64 g.x X.rax X.rbp t;
+                scalar g b;
+                X.mov_rr64 g.x X.rcx X.rax;
+                X.load64 g.x X.rax X.rbp t;
+                if factor <> 1 && (op = "+" || op = "-") then begin
+                  X.mov_ri32 g.x X.rdx factor;
+                  X.imul_rr g.x X.rcx X.rdx
+                end;
+                done_with X.rax X.rcx)
       end)
 
 and unop g op a (e : expr) =
@@ -859,6 +1013,22 @@ and cast g a t =
   | (TF32 | TF64), tt when int_regs tt ->
       (if src = TF32 then X.cvttss2si g.x X.rax 0 else X.cvttsd2si g.x X.rax 0);
       if t = TBool then to_bool g else norm_int g t
+  | TU64, (TF32 | TF64) ->
+      let lpos = new_lbl g in
+      let lend = new_lbl g in
+      X.test_rr g.x X.rax X.rax;
+      jcc_to g 9 lpos;
+      X.mov_rr64 g.x X.rcx X.rax;
+      X.shr_imm g.x X.rcx 1;
+      X.and_ri g.x X.rax 1;
+      X.or_rr g.x X.rcx X.rax;
+      X.cvtsi2sd g.x 0 X.rcx;
+      X.addsd_rr g.x 0 0;
+      jmp_to g lend;
+      place g lpos;
+      X.cvtsi2sd g.x 0 X.rax;
+      place g lend;
+      if t = TF32 then X.cvtsd2ss g.x 0 0
   | st, (TF32 | TF64) when int_regs st ->
       if t = TF32 then X.cvtsi2ss g.x 0 X.rax else X.cvtsi2sd g.x 0 X.rax
   | TBool, tt when int_regs tt -> norm_int g t
@@ -1057,6 +1227,46 @@ and await_block g a =
   X.load64 g.x X.rax X.rbp t
 
 and assign g op lhs rhs =
+  match lhs.node with
+  | EVar n -> (
+      match lookup g n with
+      | Some (off, ty) when int_regs ty ->
+          if op = "=" then begin
+            value g rhs;
+            store_at g ty off
+          end
+          else begin
+            let bop = String.sub op 0 (String.length op - 1) in
+            load_at g ty off;
+            compound_slot g bop ty off rhs
+          end
+      | _ -> assign_generic g op lhs rhs)
+  | _ -> assign_generic g op lhs rhs
+
+and compound_slot g bop ty off rhs =
+  let uns = not (is_signed ty) in
+  let imm_ok =
+    match bop with
+    | "+" | "-" | "*" | "&" | "|" | "^" | "<<" | ">>" -> true
+    | _ -> false
+  in
+  (match rhs.node with
+  | EInt k when imm_ok && fits32 k -> int_arith_imm g bop uns X.rax (Int64.to_int k)
+  | _ -> (
+      match slot_of g rhs with
+      | Some (roff, rty) ->
+          load_slot g X.rcx rty roff;
+          int_arith g bop uns X.rax X.rcx
+      | None ->
+          let t = scratch g 8 in
+          X.store64 g.x X.rax X.rbp t;
+          scalar g rhs;
+          X.mov_rr64 g.x X.rcx X.rax;
+          X.load64 g.x X.rax X.rbp t;
+          int_arith g bop uns X.rax X.rcx));
+  store_at g ty off
+
+and assign_generic g op lhs rhs =
   let a = scratch g 8 in
   addr g lhs;
   X.store64 g.x X.rax X.rbp a;
@@ -1093,43 +1303,44 @@ and assign g op lhs rhs =
     else begin
       X.mov_rr64 g.x X.rcx X.rax;
       X.load64 g.x X.rax X.rbp t;
-      let uns = not (is_signed lhs.ty) in
-      match bop with
-      | "+" -> X.add_rr g.x X.rax X.rcx
-      | "-" -> X.sub_rr g.x X.rax X.rcx
-      | "*" -> X.imul_rr g.x X.rax X.rcx
-      | "/" ->
-          if uns then begin
-            X.mov_ri32 g.x X.rdx 0;
-            X.div_rr g.x X.rcx
-          end
-          else begin
-            X.cqo g.x;
-            X.idiv_rr g.x X.rcx
-          end
-      | "%" ->
-          if uns then begin
-            X.mov_ri32 g.x X.rdx 0;
-            X.div_rr g.x X.rcx
-          end
-          else begin
-            X.cqo g.x;
-            X.idiv_rr g.x X.rcx
-          end;
-          X.mov_rr64 g.x X.rax X.rdx
-      | "&" -> X.and_rr g.x X.rax X.rcx
-      | "|" -> X.or_rr g.x X.rax X.rcx
-      | "^" -> X.xor_rr g.x X.rax X.rcx
-      | "<<" -> X.shl_cl g.x X.rax
-      | ">>" -> if uns then X.shr_cl g.x X.rax else X.sar_cl g.x X.rax
-      | _ -> fail "unknown assignment operator '%s'" op
+      int_arith g bop (not (is_signed lhs.ty)) X.rax X.rcx
     end;
     X.load64 g.x X.rcx X.rbp a;
     store_ind g X.rcx lhs.ty 0
   end
 
+and cond_false g (c : expr) lbl =
+  match c.node with
+  | EBin (op, a, b) when is_cmp op && not (is_float a.ty) -> (
+      let uns = not (is_signed a.ty) in
+      let cc = inv_cc (cmp_cc op uns) in
+      (match slot_of g b with
+      | Some (off, bty) ->
+          scalar g a;
+          load_slot g X.rcx bty off;
+          X.cmp_rr g.x X.rax X.rcx
+      | None -> (
+          match b.node with
+          | EInt k when fits32 k ->
+              scalar g a;
+              X.cmp_ri g.x X.rax (Int64.to_int k)
+          | _ ->
+              let t = scratch g 8 in
+              scalar g a;
+              X.store64 g.x X.rax X.rbp t;
+              scalar g b;
+              X.mov_rr64 g.x X.rcx X.rax;
+              X.load64 g.x X.rax X.rbp t;
+              X.cmp_rr g.x X.rax X.rcx));
+      jcc_to g cc lbl)
+  | _ ->
+      scalar g c;
+      X.test_rr g.x X.rax X.rax;
+      jcc_to g 4 lbl
+
 and stmt g (s : stmt) =
   g.tmp <- g.perm;
+  Hashtbl.reset g.acache;
   match s with
   | SLet (_, name, ty, init) ->
       let ty =
@@ -1167,9 +1378,7 @@ and stmt g (s : stmt) =
       pop_scope g
   | SIf (c, th, el) ->
       let lelse = new_lbl g in
-      scalar g c;
-      X.test_rr g.x X.rax X.rax;
-      jcc_to g 4 lelse;
+      cond_false g c lelse;
       push_scope g;
       List.iter (stmt g) th;
       pop_scope g;
@@ -1187,9 +1396,7 @@ and stmt g (s : stmt) =
       let lstart = new_lbl g in
       let lend = new_lbl g in
       place g lstart;
-      scalar g c;
-      X.test_rr g.x X.rax X.rax;
-      jcc_to g 4 lend;
+      cond_false g c lend;
       g.loops <- (lend, lstart) :: g.loops;
       g.loop_drops <- List.length g.drop_scopes :: g.loop_drops;
       push_scope g;
@@ -1691,6 +1898,7 @@ let compile ~unchecked (tgt : Target.t) (p : program) : image =
       async_ret = None;
       fix = [];
       skips = [];
+      acache = Hashtbl.create 16;
       unchecked;
     }
   in
@@ -1710,9 +1918,16 @@ let compile ~unchecked (tgt : Target.t) (p : program) : image =
       X.and_rsp_imm8 g.x 0xF0;
       X.call_rel g.x;
       g.calls <- (X.pos g.x - 4, "main") :: g.calls;
-      X.mov_rr g.x X.rdi X.rax;
-      X.mov_ri32 g.x X.rax 0x2000001;
-      X.syscall g.x;
+      (match tgt.Target.fmt with
+      | Target.MachO ->
+          X.mov_rr g.x X.rdi X.rax;
+          X.mov_ri32 g.x X.rax 0x2000001;
+          X.syscall g.x
+      | Target.Elf ->
+          X.mov_rr g.x X.rdi X.rax;
+          X.mov_ri32 g.x X.rax 231;
+          X.syscall g.x
+      | Target.Pe -> fail "windows target on the SysV abi");
       X.hlt g.x);
   let bytes = Bytes.of_string (X.raw g.x) in
   List.iter

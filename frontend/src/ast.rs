@@ -27,8 +27,11 @@ pub enum Type {
     Tuple(Vec<Type>),
     Fn(Vec<Type>, Box<Type>),
     FnC(Vec<Type>, Box<Type>),
+    FnFat(Vec<Type>, Box<Type>),
+    Dyn(String),
     Task(Box<Type>),
     Param(String),
+    SelfType,
 }
 
 impl Type {
@@ -49,6 +52,99 @@ impl Type {
             _ => return None,
         })
     }
+}
+
+pub fn type_key(t: &Type) -> String {
+    match t {
+        Type::I8 => "i8".into(),
+        Type::I16 => "i16".into(),
+        Type::I32 => "i32".into(),
+        Type::I64 => "i64".into(),
+        Type::U8 => "u8".into(),
+        Type::U16 => "u16".into(),
+        Type::U32 => "u32".into(),
+        Type::U64 => "u64".into(),
+        Type::F32 => "f32".into(),
+        Type::F64 => "f64".into(),
+        Type::Bool => "bool".into(),
+        Type::Void => "void".into(),
+        Type::Ptr(inner) => format!("p{}", type_key(inner)),
+        Type::Ref(inner, m) => format!("{}{}", if *m { "m" } else { "r" }, type_key(inner)),
+        Type::Heap(inner) => format!("b{}", type_key(inner)),
+        Type::Array(inner, n) => match n {
+            Size::Lit(k) => format!("a{}{}", k, type_key(inner)),
+            Size::Name(name) => format!("a{}{}", name, type_key(inner)),
+        },
+        Type::Named(n) => format!("n{}", n),
+        Type::Infer => "?".into(),
+        Type::Tuple(items) => {
+            let mut s = String::from("t");
+            for it in items {
+                s.push_str(&type_key(it));
+                s.push('_');
+            }
+            s
+        }
+        Type::Fn(ps, r) => {
+            let mut s = String::from("f");
+            for p in ps {
+                s.push_str(&type_key(p));
+                s.push('_');
+            }
+            s.push_str(&type_key(r));
+            s
+        }
+        Type::FnC(ps, r) => {
+            let mut s = String::from("c");
+            for p in ps {
+                s.push_str(&type_key(p));
+                s.push('_');
+            }
+            s.push_str(&type_key(r));
+            s
+        }
+        Type::FnFat(ps, r) => {
+            let mut s = String::from("F");
+            for p in ps {
+                s.push_str(&type_key(p));
+                s.push('_');
+            }
+            s.push_str(&type_key(r));
+            s
+        }
+        Type::Dyn(name) => format!("d{}", name),
+        Type::Task(inner) => format!("k{}", type_key(inner)),
+        Type::Param(n) => format!("v{}", n),
+        Type::SelfType => "self".into(),
+    }
+}
+
+pub fn hash64(s: &str) -> u64 {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in s.as_bytes() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    h
+}
+
+pub fn fat_name(ps: &[Type], ret: &Type) -> String {
+    let mut key = String::from("Fn(");
+    for p in ps {
+        key.push_str(&type_key(p));
+        key.push(',');
+    }
+    key.push_str(")->");
+    key.push_str(&type_key(ret));
+    format!("__Fn_{:016x}", hash64(&key))
+}
+
+pub fn dyn_name(trait_name: &str) -> String {
+    format!("__Dyn_{:016x}", hash64(trait_name))
+}
+
+pub fn vtable_name(trait_name: &str) -> String {
+    format!("__Vt_{:016x}", hash64(trait_name))
 }
 
 #[derive(Clone, Debug)]
@@ -157,6 +253,20 @@ pub struct ExternFn {
 }
 
 #[derive(Clone, Debug)]
+pub struct TraitMethod {
+    pub name: String,
+    pub params: Vec<(String, Type)>,
+    pub ret: Type,
+    pub self_kind: Option<bool>,
+}
+
+#[derive(Clone, Debug)]
+pub struct TraitDef {
+    pub name: String,
+    pub methods: Vec<TraitMethod>,
+}
+
+#[derive(Clone, Debug)]
 pub struct FnDef {
     pub name: String,
     pub tparams: Vec<String>,
@@ -175,4 +285,5 @@ pub struct Program {
     pub enums: Vec<EnumDef>,
     pub externs: Vec<ExternFn>,
     pub fns: Vec<FnDef>,
+    pub traits: Vec<TraitDef>,
 }

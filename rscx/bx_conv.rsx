@@ -117,48 +117,48 @@ fn cv_ty(c: &mut Cv, x: &mut Bp, t: i64) -> i64 {
     if (k == TT_PTR) {
         let cv: i64 = cv_ty(c, x, ea);
         let n: i64 = cv_prim(c, x, t, TY_PTR);
-        unsafe { x.na.v[n].a = cv; }
+        unsafe { na_at(x.na.v, n).a = ( cv) as i32; }
         return n;
     }
     if (k == TT_REF) {
         let cv: i64 = cv_ty(c, x, ea);
         let n: i64 = cv_prim(c, x, t, TY_REF);
-        unsafe { x.na.v[n].a = cv; }
+        unsafe { na_at(x.na.v, n).a = ( cv) as i32; }
         if (eb == 1) {
-            unsafe { x.na.v[n].m = 1; }
+            unsafe { na_at(x.na.v, n).m = 1; }
         }
         return n;
     }
     if (k == TT_BOX) {
         let cv: i64 = cv_ty(c, x, ea);
         let n: i64 = cv_prim(c, x, t, TY_HEAP);
-        unsafe { x.na.v[n].a = cv; }
+        unsafe { na_at(x.na.v, n).a = ( cv) as i32; }
         return n;
     }
     if (k == TT_ARRAY) {
         let cv: i64 = cv_ty(c, x, ea);
         let n: i64 = cv_prim(c, x, t, TY_ARRAY);
         unsafe {
-            x.na.v[n].a = cv;
-            x.na.v[n].n = en;
+            na_at(x.na.v, n).a = ( cv) as i32;
+            na_at(x.na.v, n).n = en;
         }
         if (eb == 1) {
             unsafe {
-                x.na.v[n].m = 1;
-                x.na.v[n].s = es;
+                na_at(x.na.v, n).m = 1;
+                na_at(x.na.v, n).s = ( es) as i32;
             }
         }
         return n;
     }
     if (k == TT_STRUCT || k == TT_ENUM) {
         let n: i64 = cv_prim(c, x, t, TY_NAMED);
-        unsafe { x.na.v[n].s = es; }
+        unsafe { na_at(x.na.v, n).s = ( es) as i32; }
         return n;
     }
     if (k == TT_TUPLE) {
         let out: i64 = cv_tup_list(c, x, el);
         let n: i64 = cv_prim(c, x, t, TY_TUPLE);
-        unsafe { x.na.v[n].l = out; }
+        unsafe { na_at(x.na.v, n).l = ( out) as i32; }
         return n;
     }
     if (k == TT_FN || k == TT_FNC) {
@@ -170,20 +170,20 @@ fn cv_ty(c: &mut Cv, x: &mut Bp, t: i64) -> i64 {
         }
         let n: i64 = cv_prim(c, x, t, tag);
         unsafe {
-            x.na.v[n].l = out;
-            x.na.v[n].a = rt;
+            na_at(x.na.v, n).l = ( out) as i32;
+            na_at(x.na.v, n).a = ( rt) as i32;
         }
         return n;
     }
     if (k == TT_TASK) {
         let cv: i64 = cv_ty(c, x, ea);
         let n: i64 = cv_prim(c, x, t, TY_TASK);
-        unsafe { x.na.v[n].a = cv; }
+        unsafe { na_at(x.na.v, n).a = ( cv) as i32; }
         return n;
     }
     if (k == TT_VAR) {
         let n: i64 = cv_prim(c, x, t, TY_PARAM);
-        unsafe { x.na.v[n].s = es; }
+        unsafe { na_at(x.na.v, n).s = ( es) as i32; }
         return n;
     }
     return 0;
@@ -191,12 +191,12 @@ fn cv_ty(c: &mut Cv, x: &mut Bp, t: i64) -> i64 {
 
 fn cv_slot_a(c: &mut Cv, x: &mut Bp, n: i64, t: i64) {
     let v: i64 = cv_ty(c, x, t);
-    unsafe { x.na.v[n].a = v; }
+    unsafe { na_at(x.na.v, n).a = ( v) as i32; }
 }
 
 fn cv_slot_b(c: &mut Cv, x: &mut Bp, n: i64, t: i64) {
     let v: i64 = cv_ty(c, x, t);
-    unsafe { x.na.v[n].b = v; }
+    unsafe { na_at(x.na.v, n).b = ( v) as i32; }
 }
 
 fn cv_ex_lst(c: &mut Cv, x: &mut Bp, l: i64) {
@@ -214,13 +214,13 @@ fn cv_ex(c: &mut Cv, x: &mut Bp, e: i64) {
         return;
     }
     var k: i32 = 0;
-    unsafe { k = x.na.v[e].k; }
+    unsafe { k = na_at(x.na.v, e).k; }
     if (k == EX_INT || k == EX_FLOAT || k == EX_STR || k == EX_BOOL || k == EX_NULL || k == EX_VAR || k == EX_FNREF) {
         return;
     }
     if (k == EX_SIZEOF || k == EX_ZERO) {
         var t0: i64 = 0;
-        unsafe { t0 = x.na.v[e].a; }
+        unsafe { t0 = (na_at(x.na.v, e).a as i64); }
         cv_slot_a(c, x, e, t0);
         return;
     }
@@ -228,8 +228,8 @@ fn cv_ex(c: &mut Cv, x: &mut Bp, e: i64) {
         var a0: i64 = 0;
         var b0: i64 = 0;
         unsafe {
-            a0 = x.na.v[e].a;
-            b0 = x.na.v[e].b;
+            a0 = (na_at(x.na.v, e).a as i64);
+            b0 = (na_at(x.na.v, e).b as i64);
         }
         cv_ex(c, x, a0);
         cv_slot_b(c, x, e, b0);
@@ -239,9 +239,9 @@ fn cv_ex(c: &mut Cv, x: &mut Bp, e: i64) {
     var b1: i64 = 0;
     var l1: i64 = 0;
     unsafe {
-        a1 = x.na.v[e].a;
-        b1 = x.na.v[e].b;
-        l1 = x.na.v[e].l;
+        a1 = (na_at(x.na.v, e).a as i64);
+        b1 = (na_at(x.na.v, e).b as i64);
+        l1 = (na_at(x.na.v, e).l as i64);
     }
     if (k == EX_BIN) {
         cv_ex(c, x, a1);
@@ -283,16 +283,16 @@ fn cv_st(c: &mut Cv, x: &mut Bp, st: i64) {
         return;
     }
     var k: i32 = 0;
-    unsafe { k = x.na.v[st].k; }
+    unsafe { k = na_at(x.na.v, st).k; }
     var a0: i64 = 0;
     var b0: i64 = 0;
     var l0: i64 = 0;
     var l20: i64 = 0;
     unsafe {
-        a0 = x.na.v[st].a;
-        b0 = x.na.v[st].b;
-        l0 = x.na.v[st].l;
-        l20 = x.na.v[st].l2;
+        a0 = (na_at(x.na.v, st).a as i64);
+        b0 = (na_at(x.na.v, st).b as i64);
+        l0 = (na_at(x.na.v, st).l as i64);
+        l20 = (na_at(x.na.v, st).l2 as i64);
     }
     if (k == ST_LET) {
         cv_slot_a(c, x, st, a0);
@@ -322,13 +322,13 @@ fn cv_st(c: &mut Cv, x: &mut Bp, st: i64) {
         while (i < n) {
             let arm: i64 = lp_get(&mut x.lp, l0, i);
             var bl: i64 = 0;
-            unsafe { bl = x.na.v[arm].l; }
+            unsafe { bl = (na_at(x.na.v, arm).l as i64); }
             cv_blk(c, x, bl);
             i += 1;
         }
     } else if (k == ST_LABEL) {
         var inner: i64 = 0;
-        unsafe { inner = x.na.v[st].a; }
+        unsafe { inner = (na_at(x.na.v, st).a as i64); }
         cv_st(c, x, inner);
     } else if (k == ST_RETURN) {
         cv_ex(c, x, a0);
@@ -348,13 +348,13 @@ fn cv_ty_pairs(c: &mut Cv, x: &mut Bp, l: i64) {
 
 fn cv_it(c: &mut Cv, x: &mut Bp, it: i64) {
     var k: i32 = 0;
-    unsafe { k = x.na.v[it].k; }
+    unsafe { k = na_at(x.na.v, it).k; }
     if (k == IT_CONST || k == IT_STATIC) {
         var a0: i64 = 0;
         var b0: i64 = 0;
         unsafe {
-            a0 = x.na.v[it].a;
-            b0 = x.na.v[it].b;
+            a0 = (na_at(x.na.v, it).a as i64);
+            b0 = (na_at(x.na.v, it).b as i64);
         }
         cv_slot_a(c, x, it, a0);
         cv_ex(c, x, b0);
@@ -362,13 +362,13 @@ fn cv_it(c: &mut Cv, x: &mut Bp, it: i64) {
     }
     if (k == IT_STRUCT) {
         var l0: i64 = 0;
-        unsafe { l0 = x.na.v[it].l; }
+        unsafe { l0 = (na_at(x.na.v, it).l as i64); }
         cv_ty_pairs(c, x, l0);
         return;
     }
     if (k == IT_ENUM) {
         var l0: i64 = 0;
-        unsafe { l0 = x.na.v[it].l; }
+        unsafe { l0 = (na_at(x.na.v, it).l as i64); }
         let n: i64 = lp_len(&mut x.lp, l0);
         var i: i64 = 1;
         while (i < n) {
@@ -389,8 +389,8 @@ fn cv_it(c: &mut Cv, x: &mut Bp, it: i64) {
         var a0: i64 = 0;
         var l0: i64 = 0;
         unsafe {
-            a0 = x.na.v[it].a;
-            l0 = x.na.v[it].l;
+            a0 = (na_at(x.na.v, it).a as i64);
+            l0 = (na_at(x.na.v, it).l as i64);
         }
         let n: i64 = lp_len(&mut x.lp, l0);
         var i: i64 = 0;
@@ -408,9 +408,9 @@ fn cv_it(c: &mut Cv, x: &mut Bp, it: i64) {
         var l20: i64 = 0;
         var l30: i64 = 0;
         unsafe {
-            a0 = x.na.v[it].a;
-            l20 = x.na.v[it].l2;
-            l30 = x.na.v[it].l3;
+            a0 = (na_at(x.na.v, it).a as i64);
+            l20 = (na_at(x.na.v, it).l2 as i64);
+            l30 = (na_at(x.na.v, it).l3 as i64);
         }
         cv_ty_pairs(c, x, l20);
         cv_slot_a(c, x, it, a0);

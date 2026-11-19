@@ -110,6 +110,17 @@ fn type_w(t: &Type, s: &mut String) {
             type_w(ret, s);
             s.push(')');
         }
+        Type::FnFat(params, ret) => {
+            s.push_str("(named ");
+            s.push_str(&fat_name(params, ret));
+            s.push(')');
+        }
+        Type::Dyn(name) => {
+            s.push_str("(named ");
+            s.push_str(&dyn_name(name));
+            s.push(')');
+        }
+        Type::SelfType => s.push_str("(named Self)"),
         Type::Task(inner) => {
             s.push_str("(task ");
             type_w(inner, s);

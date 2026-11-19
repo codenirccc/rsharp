@@ -2,9 +2,11 @@ extern fn malloc(n: u64) -> ptr<u8>;
 extern fn realloc(p: ptr<u8>, n: u64) -> ptr<u8>;
 extern fn free(p: ptr<u8>) -> void;
 extern fn memcpy(d: ptr<u8>, s: ptr<u8>, n: u64) -> ptr<u8>;
+extern fn memset(d: ptr<u8>, c: i32, n: u64) -> ptr<u8>;
 extern fn strlen(s: ptr<u8>) -> u64;
 extern fn sprintf(dst: ptr<u8>, fmt: ptr<u8>, ...) -> i32;
 extern "msvcrt" fn strtod(s: ptr<u8>, end: ptr<u8>) -> f64;
+extern "kernel32" fn WriteFile(h: i64, buf: ptr<u8>, n: u32, wrote: ptr<u32>, ov: ptr<u8>) -> i32;
 
 fn p_off(p: ptr<u8>, i: i64) -> ptr<u8> {
     var q: ptr<u8> = null;
@@ -28,7 +30,43 @@ struct Sb {
     p: ptr<u8>,
     n: i64,
     cap: i64,
-    bad: i32
+    bad: i32,
+    fd: i64,
+    total: i64
+}
+
+const SB_SPILL: i64 = 1048576;
+
+fn sb_spill(b: &mut Sb, fd: i64) {
+    b.fd = fd;
+}
+
+fn sb_flush(b: &mut Sb) -> i32 {
+    var off: i64 = 0;
+    var failed: i32 = 0;
+    let fd: i64 = b.fd;
+    let n: i64 = b.n;
+    b.n = 0;
+    b.total = b.total + n;
+    if (fd == 0 || n <= 0) {
+        return 0;
+    }
+    unsafe {
+        while (off < n) {
+            var wrote: u32 = 0;
+            let ok: i32 = WriteFile(fd, b.p + off, (n - off) as u32, &wrote as ptr<u32>, null);
+            if (ok != 1 || wrote == 0) {
+                failed = 1;
+                break;
+            }
+            off = off + (wrote as i64);
+        }
+    }
+    if (failed == 1) {
+        b.bad = 1;
+        return 0 - 1;
+    }
+    return 0;
 }
 
 fn sb_new(cap: i64) -> Sb {
@@ -60,6 +98,11 @@ fn sb_reserve(b: &mut Sb, extra: i64) -> i32 {
         b.bad = 1;
         return 0 - 1;
     }
+    if (b.fd != 0 && b.n + extra > SB_SPILL) {
+        if (sb_flush(b) != 0) {
+            return 0 - 1;
+        }
+    }
     let need: i64 = b.n + extra;
     if (need <= b.cap) {
         return 0;
@@ -73,7 +116,11 @@ fn sb_reserve(b: &mut Sb, extra: i64) -> i32 {
             b.bad = 1;
             return 0 - 1;
         }
-        cap = cap * 2;
+        var grow: i64 = cap / 2;
+        if (grow < 4096) {
+            grow = 4096;
+        }
+        cap = cap + grow;
     }
     var np: ptr<u8> = realloc(b.p, cap as u64);
     if (np == null) {
@@ -999,69 +1046,126 @@ fn c_eq(a: ptr<u8>, b: ptr<u8>) -> bool {
 
 struct Lst {
     p: ptr<i64>,
-    n: i64,
-    cap: i64
+    n: i32,
+    cap: i32
 }
 
+const LP_SHIFT: i64 = 10;
+const LP_BLK: i64 = 1024;
+const LP_MASK: i64 = 1023;
+
 struct Lp {
-    v: ptr<Lst>,
+    v: ptr<ptr<Lst>>,
     n: i64,
-    cap: i64,
+    nb: i64,
+    bcap: i64,
     bad: i32
+}
+
+fn lp_at(v: ptr<ptr<Lst>>, id: i64) -> ptr<Lst> {
+    var q: ptr<Lst> = null;
+    var off: i64 = 0;
+    unsafe {
+        q = v[id >> LP_SHIFT];
+        off = id & LP_MASK;
+    }
+    unsafe {
+        return q + off;
+    }
+}
+
+fn lp_blk(l: &mut Lp, blk: i64) -> ptr<Lst> {
+    var q: ptr<Lst> = null;
+    unsafe { q = l.v[blk]; }
+    if (q != null) {
+        return q;
+    }
+    q = malloc((LP_BLK as u64) * sizeof(Lst)) as ptr<Lst>;
+    if (q == null) {
+        l.bad = 1;
+        return null;
+    }
+    unsafe { memset(q as ptr<u8>, 0, (LP_BLK as u64) * sizeof(Lst)); }
+    unsafe { l.v[blk] = q; }
+    if (l.nb < blk + 1) {
+        l.nb = blk + 1;
+    }
+    return q;
 }
 
 fn lp_new() -> Lp {
     var l: Lp = zero(Lp);
-    l.cap = 64;
-    l.v = malloc((l.cap as u64) * sizeof(Lst)) as ptr<Lst>;
+    l.bcap = 64;
+    l.v = malloc((l.bcap as u64) * sizeof(ptr<Lst>)) as ptr<ptr<Lst>>;
     if (l.v == null) {
         l.bad = 1;
         return l;
     }
-    unsafe { l.v[0] = zero(Lst); }
+    unsafe { memset(l.v as ptr<u8>, 0, (l.bcap as u64) * sizeof(ptr<Lst>)); }
+    if (lp_blk(&mut l, 0) == null) {
+        return l;
+    }
     l.n = 1;
     return l;
 }
 
 fn lp_free(l: &mut Lp) {
-    var i: i64 = 1;
-    while (i < l.n) {
-        var p: ptr<i64> = null;
-        unsafe { p = l.v[i].p; }
-        if (p != null) {
-            free(p as ptr<u8>);
-        }
-        i += 1;
-    }
     if (l.v != null) {
-        free(l.v as ptr<u8>);
+        var b: i64 = 0;
+        unsafe {
+            while (b < l.bcap) {
+                let q: ptr<Lst> = l.v[b];
+                if (q != null) {
+                    var i: i64 = 0;
+                    while (i < LP_BLK) {
+                        let ep: ptr<i64> = q[i].p;
+                        if (ep != null) {
+                            free(ep as ptr<u8>);
+                        }
+                        i += 1;
+                    }
+                    free(q as ptr<u8>);
+                    l.v[b] = null;
+                }
+                b += 1;
+            }
+            free(l.v as ptr<u8>);
+        }
         l.v = null;
     }
     l.n = 0;
-    l.cap = 0;
+    l.nb = 0;
+    l.bcap = 0;
 }
 
 fn lp_add(l: &mut Lp) -> i64 {
     if (l.bad == 1) {
         return 0;
     }
-    if (l.n >= l.cap) {
-        let nc: i64 = l.cap * 2;
-        var raw: ptr<u8> = realloc(l.v as ptr<u8>, (nc as u64) * sizeof(Lst));
+    let id: i64 = l.n;
+    let blk: i64 = id >> LP_SHIFT;
+    if (blk >= l.bcap) {
+        var nb: i64 = l.bcap;
+        while (nb <= blk) {
+            nb = nb + nb / 2;
+        }
+        var raw: ptr<u8> = realloc(l.v as ptr<u8>, (nb as u64) * sizeof(ptr<Lst>));
         if (raw == null) {
             l.bad = 1;
             return 0;
         }
-        l.v = raw as ptr<Lst>;
-        l.cap = nc;
+        var dir: ptr<ptr<Lst>> = raw as ptr<ptr<Lst>>;
+        unsafe {
+            let tail: ptr<u8> = (dir + l.bcap) as ptr<u8>;
+            memset(tail, 0, ((nb - l.bcap) as u64) * sizeof(ptr<Lst>));
+        }
+        l.v = dir;
+        l.bcap = nb;
     }
-    let id: i64 = l.n;
-    unsafe {
-        l.v[id].p = null;
-        l.v[id].n = 0;
-        l.v[id].cap = 0;
+    if (lp_blk(l, blk) == null) {
+        return 0;
     }
-    l.n += 1;
+    l.n = id + 1;
     return id;
 }
 
@@ -1072,28 +1176,32 @@ fn lp_push(l: &mut Lp, id: i64, v: i64) -> i32 {
     }
     var n: i64 = 0;
     var cap: i64 = 0;
-    var p: ptr<i64> = null;
+    var ep: ptr<i64> = null;
     unsafe {
-        n = l.v[id].n;
-        cap = l.v[id].cap;
-        p = l.v[id].p;
+        n = lp_at(l.v, id).n as i64;
+        cap = lp_at(l.v, id).cap as i64;
+        ep = lp_at(l.v, id).p;
     }
     if (n >= cap) {
-        var nc: i64 = cap * 2;
-        if (nc < 8) {
-            nc = 8;
+        var nc: i64 = cap + cap / 2;
+        if (nc < cap + 2) {
+            nc = cap + 2;
         }
-        var raw: ptr<u8> = realloc(p as ptr<u8>, (nc as u64) * sizeof(i64));
+        var raw: ptr<u8> = realloc(ep as ptr<u8>, (nc as u64) * sizeof(i64));
         if (raw == null) {
             l.bad = 1;
             return 0 - 1;
         }
-        p = raw as ptr<i64>;
-        unsafe { l.v[id].p = p; }
-        unsafe { l.v[id].cap = nc; }
+        ep = raw as ptr<i64>;
+        unsafe {
+            lp_at(l.v, id).p = ep;
+            lp_at(l.v, id).cap = nc as i32;
+        }
     }
-    unsafe { p[n] = v; }
-    unsafe { l.v[id].n = n + 1; }
+    unsafe {
+        ep[n] = v;
+        lp_at(l.v, id).n = (n + 1) as i32;
+    }
     return 0;
 }
 
@@ -1101,19 +1209,19 @@ fn lp_len(l: &mut Lp, id: i64) -> i64 {
     if (id <= 0) {
         return 0;
     }
-    var n: i64 = 0;
-    unsafe { n = l.v[id].n; }
-    return n;
+    var n: i32 = 0;
+    unsafe { n = lp_at(l.v, id).n; }
+    return n as i64;
 }
 
 fn lp_pop(l: &mut Lp, id: i64) {
     if (id <= 0) {
         return;
     }
-    var n: i64 = 0;
-    unsafe { n = l.v[id].n; }
+    var n: i32 = 0;
+    unsafe { n = lp_at(l.v, id).n; }
     if (n > 0) {
-        unsafe { l.v[id].n = n - 1; }
+        unsafe { lp_at(l.v, id).n = n - 1; }
     }
 }
 
@@ -1122,7 +1230,7 @@ fn lp_get(l: &mut Lp, id: i64, i: i64) -> i64 {
         return 0;
     }
     var v: i64 = 0;
-    unsafe { v = l.v[id].p[i]; }
+    unsafe { v = lp_at(l.v, id).p[i]; }
     return v;
 }
 
@@ -1130,7 +1238,27 @@ fn lp_set(l: &mut Lp, id: i64, i: i64, v: i64) {
     if (id <= 0) {
         return;
     }
-    unsafe { l.v[id].p[i] = v; }
+    unsafe { lp_at(l.v, id).p[i] = v; }
+}
+
+fn lp_bytes(l: &mut Lp) -> i64 {
+    var tot: i64 = 0;
+    var b: i64 = 0;
+    unsafe {
+        while (b < l.nb) {
+            let q: ptr<Lst> = l.v[b];
+            if (q != null) {
+                var i: i64 = 0;
+                while (i < LP_BLK) {
+                    tot = tot + (q[i].cap as i64) * (sizeof(i64) as i64);
+                    i += 1;
+                }
+                tot = tot + LP_BLK * (sizeof(Lst) as i64);
+            }
+            b += 1;
+        }
+    }
+    return tot;
 }
 
 struct SetI {
@@ -1271,4 +1399,165 @@ fn si_has_h(s: &mut SetI, h: i64, id: i64) -> bool {
 fn si_has(s: &mut SetI, sp: &mut Sp, id: i64) -> bool {
     let h: i64 = si_hash(sp, id);
     return si_has_h(s, h, id);
+}
+
+struct MapI {
+    k: ptr<i64>,
+    v: ptr<i64>,
+    cap: i64,
+    n: i64,
+    bad: i32
+}
+
+fn m64_new() -> MapI {
+    var m: MapI = zero(MapI);
+    m.cap = 64;
+    m.k = malloc((m.cap as u64) * sizeof(i64)) as ptr<i64>;
+    m.v = malloc((m.cap as u64) * sizeof(i64)) as ptr<i64>;
+    if (m.k == null || m.v == null) {
+        m.bad = 1;
+        return m;
+    }
+    var i: i64 = 0;
+    while (i < m.cap) {
+        unsafe { m.k[i] = 0; }
+        unsafe { m.v[i] = 0; }
+        i += 1;
+    }
+    return m;
+}
+
+fn m64_free(m: &mut MapI) {
+    if (m.k != null) {
+        free(m.k as ptr<u8>);
+        m.k = null;
+    }
+    if (m.v != null) {
+        free(m.v as ptr<u8>);
+        m.v = null;
+    }
+    m.cap = 0;
+    m.n = 0;
+}
+
+fn mi_hash(key: i64) -> i64 {
+    var h: i64 = key * 2654435761;
+    h = h & 2147483647;
+    return h;
+}
+
+fn m64_grow(m: &mut MapI) -> i32 {
+    let oc: i64 = m.cap;
+    let nc: i64 = oc * 2;
+    var nk: ptr<i64> = malloc((nc as u64) * sizeof(i64)) as ptr<i64>;
+    var nv: ptr<i64> = malloc((nc as u64) * sizeof(i64)) as ptr<i64>;
+    if (nk == null || nv == null) {
+        m.bad = 1;
+        return 0;
+    }
+    var i: i64 = 0;
+    while (i < nc) {
+        unsafe { nk[i] = 0; }
+        unsafe { nv[i] = 0; }
+        i += 1;
+    }
+    var j: i64 = 0;
+    while (j < oc) {
+        var ck: i64 = 0;
+        var cv: i64 = 0;
+        unsafe {
+            ck = m.k[j];
+            cv = m.v[j];
+        }
+        if (ck != 0) {
+            var at: i64 = mi_hash(ck) & (nc - 1);
+            while (true) {
+                var probe: i64 = 0;
+                unsafe { probe = nk[at]; }
+                if (probe == 0) {
+                    break;
+                }
+                at = (at + 1) & (nc - 1);
+            }
+            unsafe {
+                nk[at] = ck;
+                nv[at] = cv;
+            }
+        }
+        j += 1;
+    }
+    free(m.k as ptr<u8>);
+    free(m.v as ptr<u8>);
+    m.k = nk;
+    m.v = nv;
+    m.cap = nc;
+    return 1;
+}
+
+fn m64_set(m: &mut MapI, key: i64, val: i64) -> i32 {
+    if (m.bad == 1 || key == 0) {
+        return 0;
+    }
+    if ((m.n + 1) * 2 >= m.cap) {
+        if (m64_grow(m) == 0) {
+            return 0;
+        }
+    }
+    let h: i64 = mi_hash(key);
+    var at: i64 = h & (m.cap - 1);
+    while (true) {
+        var ck: i64 = 0;
+        unsafe { ck = m.k[at]; }
+        if (ck == 0) {
+            unsafe {
+                m.k[at] = key;
+                m.v[at] = val;
+            }
+            m.n += 1;
+            return 1;
+        }
+        if (ck == key) {
+            unsafe { m.v[at] = val; }
+            return 1;
+        }
+        at = (at + 1) & (m.cap - 1);
+    }
+}
+
+fn m64_get(m: &mut MapI, key: i64, dflt: i64) -> i64 {
+    if (m.bad == 1 || key == 0 || m.n == 0) {
+        return dflt;
+    }
+    var at: i64 = mi_hash(key) & (m.cap - 1);
+    while (true) {
+        var ck: i64 = 0;
+        unsafe { ck = m.k[at]; }
+        if (ck == 0) {
+            return dflt;
+        }
+        if (ck == key) {
+            var cv: i64 = 0;
+            unsafe { cv = m.v[at]; }
+            return cv;
+        }
+        at = (at + 1) & (m.cap - 1);
+    }
+}
+
+fn m64_has(m: &mut MapI, key: i64) -> bool {
+    if (m.bad == 1 || key == 0 || m.n == 0) {
+        return false;
+    }
+    var at: i64 = mi_hash(key) & (m.cap - 1);
+    while (true) {
+        var ck: i64 = 0;
+        unsafe { ck = m.k[at]; }
+        if (ck == 0) {
+            return false;
+        }
+        if (ck == key) {
+            return true;
+        }
+        at = (at + 1) & (m.cap - 1);
+    }
 }

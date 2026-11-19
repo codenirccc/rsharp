@@ -2,20 +2,25 @@ module X = X64
 
 type abi = Win64 | SysV
 
-type fmt = Pe | MachO
+type fmt = Pe | MachO | Elf
 
 type t = { abi : abi; fmt : fmt; name : string; ext : string }
 
 let windows = { abi = Win64; fmt = Pe; name = "windows-x86_64"; ext = ".exe" }
 let macos = { abi = SysV; fmt = MachO; name = "macos-x86_64"; ext = "" }
+let linux = { abi = SysV; fmt = Elf; name = "linux-x86_64"; ext = "" }
 
 let parse s =
   match String.lowercase_ascii s with
   | "windows" | "win" | "win64" | "pe" -> Some windows
   | "macos" | "mac" | "darwin" | "osx" | "macho" -> Some macos
+  | "linux" | "elf" | "gnu" | "glibc" -> Some linux
   | _ -> None
 
-let host = if Sys.win32 then windows else macos
+let host =
+  if Sys.win32 then windows
+  else if Sys.file_exists "/System/Library/CoreServices/SystemVersion.plist" then macos
+  else linux
 
 let shadow t = match t.abi with Win64 -> 32 | SysV -> 0
 
@@ -36,6 +41,12 @@ let lib_security = "/System/Library/Frameworks/Security.framework/Security"
 let lib_objc = "/usr/lib/libobjc.A.dylib"
 let lib_appkit = "/System/Library/Frameworks/AppKit.framework/AppKit"
 let lib_cg = "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics"
+
+let lib_c = "libc.so.6"
+let lib_m = "libm.so.6"
+let lib_dl = "libdl.so.2"
+let lib_pthread = "libpthread.so.0"
+let lib_rt = "librt.so.1"
 
 let tags_win =
   [
@@ -65,6 +76,25 @@ let tags_mac =
     ("objc", lib_objc);
     ("appkit", lib_appkit);
     ("coregraphics", lib_cg);
+  ]
+
+let tags_linux =
+  [
+    ("libc", lib_c);
+    ("c", lib_c);
+    ("system", lib_c);
+    ("libm", lib_m);
+    ("m", lib_m);
+    ("dl", lib_dl);
+    ("libdl", lib_dl);
+    ("pthread", lib_pthread);
+    ("rt", lib_rt);
+    ("crypto", "libcrypto.so.3");
+    ("ssl", "libssl.so.3");
+    ("curl", "libcurl.so.4");
+    ("z", "libz.so.1");
+    ("x11", "libX11.so.6");
+    ("vulkan", "libvulkan.so.1");
   ]
 
 let fixed_win =
@@ -107,6 +137,20 @@ let fixed_win =
     ("time", "msvcrt.dll");
     ("rand", "msvcrt.dll");
     ("srand", "msvcrt.dll");
+    ("fopen", "msvcrt.dll");
+    ("freopen", "msvcrt.dll");
+    ("fclose", "msvcrt.dll");
+    ("fread", "msvcrt.dll");
+    ("fwrite", "msvcrt.dll");
+    ("fseek", "msvcrt.dll");
+    ("ftell", "msvcrt.dll");
+    ("fflush", "msvcrt.dll");
+    ("fgets", "msvcrt.dll");
+    ("fputs", "msvcrt.dll");
+    ("remove", "msvcrt.dll");
+    ("rename", "msvcrt.dll");
+    ("system", "msvcrt.dll");
+    ("getenv", "msvcrt.dll");
   ]
 
 let fixed_mac =
@@ -135,6 +179,20 @@ let fixed_mac =
     ("time", lib_system);
     ("rand", lib_system);
     ("srand", lib_system);
+    ("fopen", lib_system);
+    ("freopen", lib_system);
+    ("fclose", lib_system);
+    ("fread", lib_system);
+    ("fwrite", lib_system);
+    ("fseek", lib_system);
+    ("ftell", lib_system);
+    ("fflush", lib_system);
+    ("fgets", lib_system);
+    ("fputs", lib_system);
+    ("remove", lib_system);
+    ("rename", lib_system);
+    ("system", lib_system);
+    ("getenv", lib_system);
     ("getpid", lib_system);
     ("nanosleep", lib_system);
     ("usleep", lib_system);
@@ -142,6 +200,60 @@ let fixed_mac =
     ("munmap", lib_system);
     ("mach_absolute_time", lib_system);
     ("mach_timebase_info", lib_system);
+  ]
+
+let fixed_linux =
+  [
+    ("printf", lib_c);
+    ("puts", lib_c);
+    ("putchar", lib_c);
+    ("malloc", lib_c);
+    ("free", lib_c);
+    ("calloc", lib_c);
+    ("realloc", lib_c);
+    ("memcpy", lib_c);
+    ("memmove", lib_c);
+    ("memset", lib_c);
+    ("sprintf", lib_c);
+    ("snprintf", lib_c);
+    ("strlen", lib_c);
+    ("strcmp", lib_c);
+    ("strncmp", lib_c);
+    ("strcpy", lib_c);
+    ("strncpy", lib_c);
+    ("strstr", lib_c);
+    ("atoi", lib_c);
+    ("atof", lib_c);
+    ("qsort", lib_c);
+    ("time", lib_c);
+    ("rand", lib_c);
+    ("srand", lib_c);
+    ("fopen", lib_c);
+    ("freopen", lib_c);
+    ("fclose", lib_c);
+    ("fread", lib_c);
+    ("fwrite", lib_c);
+    ("fseek", lib_c);
+    ("ftell", lib_c);
+    ("fflush", lib_c);
+    ("fgets", lib_c);
+    ("fputs", lib_c);
+    ("remove", lib_c);
+    ("rename", lib_c);
+    ("system", lib_c);
+    ("getenv", lib_c);
+    ("getpid", lib_c);
+    ("nanosleep", lib_c);
+    ("usleep", lib_c);
+    ("read", lib_c);
+    ("write", lib_c);
+    ("open", lib_c);
+    ("close", lib_c);
+    ("lseek", lib_c);
+    ("dlopen", lib_dl);
+    ("dlsym", lib_dl);
+    ("dlerror", lib_dl);
+    ("dlclose", lib_dl);
   ]
 
 let windows_only =
@@ -162,25 +274,42 @@ let windows_only =
     "OutputDebugStringA";
   ]
 
+let table_of t = match t.fmt with Pe -> tags_win | MachO -> tags_mac | Elf -> tags_linux
+
+let is_file_tag s =
+  String.exists (fun c -> c = '.' || c = '/' || c = '\\' || c = '-') s
+
+let basename s =
+  let n = String.length s in
+  let i = ref (n - 1) in
+  while !i >= 0 && s.[!i] <> '/' && s.[!i] <> '\\' do
+    decr i
+  done;
+  String.sub s (!i + 1) (n - !i - 1)
+
 let lib_of ?lib (t : t) name =
   match lib with
+  | Some tag when is_file_tag tag -> (
+      match t.fmt with Pe -> basename tag | MachO | Elf -> tag)
   | Some tag -> (
-      let tag = String.lowercase_ascii tag in
-      let table = match t.abi with Win64 -> tags_win | SysV -> tags_mac in
-      match List.assoc_opt tag table with
+      let key = String.lowercase_ascii tag in
+      let table = table_of t in
+      match List.assoc_opt key table with
       | Some l -> l
       | None ->
           let known = String.concat ", " (List.map fst table) in
           failwith
-            (Printf.sprintf "no library tagged '%s' for %s; the tags are %s" tag t.name
-               known))
+            (Printf.sprintf
+               "no library tagged '%s' for %s; the tags are %s, or name the file, e.g. \
+                extern \"python312.dll\""
+               tag t.name known))
   | None -> (
-      match t.abi with
-      | Win64 -> (
+      match t.fmt with
+      | Pe -> (
           match List.assoc_opt name fixed_win with
           | Some dll -> dll
           | None -> failwith (Printf.sprintf "no DLL provides '%s' - tag it, e.g. extern \"user32\" fn %s(...)" name name))
-      | SysV -> (
+      | MachO -> (
           match List.assoc_opt name fixed_mac with
           | Some dylib -> dylib
           | None ->
@@ -188,11 +317,25 @@ let lib_of ?lib (t : t) name =
                 failwith
                   (Printf.sprintf
                      "'%s' is a Windows import; use mach_absolute_time() and the exit syscall \
-
                       for a macOS build"
                      name)
               else
                 failwith
                   (Printf.sprintf
                      "no library provides '%s' on macOS - tag it, e.g. extern \"system\" fn %s(...)"
+                     name name))
+      | Elf -> (
+          match List.assoc_opt name fixed_linux with
+          | Some lib -> lib
+          | None ->
+              if List.mem name windows_only then
+                failwith
+                  (Printf.sprintf
+                     "'%s' is a Windows import; use clock_gettime() and the exit syscall for a \
+                      Linux build"
+                     name)
+              else
+                failwith
+                  (Printf.sprintf
+                     "no library provides '%s' on Linux - tag it, e.g. extern \"libc\" fn %s(...)"
                      name name)))

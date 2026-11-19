@@ -1201,18 +1201,18 @@ fn bx_eval_int(x: &mut Bp, e: i64) -> Iv {
         return iv_no();
     }
     var k: i32 = 0;
-    unsafe { k = x.na.v[e].k; }
+    unsafe { k = na_at(x.na.v, e).k; }
     if (k == EX_INT) {
         var v: i64 = 0;
-        unsafe { v = x.na.v[e].n; }
+        unsafe { v = na_at(x.na.v, e).n; }
         return iv_yes(v);
     }
     if (k == EX_UN) {
         var op: i64 = 0;
         var a: i64 = 0;
         unsafe {
-            op = x.na.v[e].s;
-            a = x.na.v[e].a;
+            op = (na_at(x.na.v, e).s as i64);
+            a = (na_at(x.na.v, e).a as i64);
         }
         let av: Iv = bx_eval_int(x, a);
         if (av.ok == 0) {
@@ -1230,8 +1230,8 @@ fn bx_eval_int(x: &mut Bp, e: i64) -> Iv {
         var a2: i64 = 0;
         var t: i64 = 0;
         unsafe {
-            a2 = x.na.v[e].a;
-            t = x.na.v[e].b;
+            a2 = (na_at(x.na.v, e).a as i64);
+            t = (na_at(x.na.v, e).b as i64);
         }
         if (tt_is_int(&mut x.tt, t)) {
             let av2: Iv = bx_eval_int(x, a2);
@@ -1255,9 +1255,9 @@ fn bx_eval_int(x: &mut Bp, e: i64) -> Iv {
         var a3: i64 = 0;
         var b3: i64 = 0;
         unsafe {
-            op2 = x.na.v[e].s;
-            a3 = x.na.v[e].a;
-            b3 = x.na.v[e].b;
+            op2 = (na_at(x.na.v, e).s as i64);
+            a3 = (na_at(x.na.v, e).a as i64);
+            b3 = (na_at(x.na.v, e).b as i64);
         }
         let xr: Iv = bx_eval_int(x, a3);
         if (xr.ok == 0) {
@@ -1268,7 +1268,7 @@ fn bx_eval_int(x: &mut Bp, e: i64) -> Iv {
             return iv_no();
         }
         var ty: i64 = 0;
-        unsafe { ty = x.na.v[a3].ty; }
+        unsafe { ty = (na_at(x.na.v, a3).ty as i64); }
         let xs: i64 = tt_wrap(&mut x.tt, ty, xr.v);
         let ys: i64 = tt_wrap(&mut x.tt, ty, yr.v);
         var r: i64 = 0;
@@ -1381,7 +1381,7 @@ fn bx_expr(x: &mut Bp, s: i64) -> i64 {
         let ln: i64 = sp_len(&mut x.sp, a);
         let v: i64 = bx_num_of(p, ln);
         let e: i64 = na_add(&mut x.na, EX_INT);
-        unsafe { x.na.v[e].n = v; }
+        unsafe { na_at(x.na.v, e).n = v; }
         return e;
     }
     if (n == 2 && sp_eqc(&mut x.sp, h, "float")) {
@@ -1401,7 +1401,7 @@ fn bx_expr(x: &mut Bp, s: i64) -> i64 {
         let f: f64 = strtod(tb.p, null);
         sb_free(&mut tb);
         let e: i64 = na_add(&mut x.na, EX_FLOAT);
-        unsafe { x.na.v[e].f = f; }
+        unsafe { na_at(x.na.v, e).f = f; }
         return e;
     }
     if (n == 2 && sp_eqc(&mut x.sp, h, "str")) {
@@ -1411,7 +1411,7 @@ fn bx_expr(x: &mut Bp, s: i64) -> i64 {
         }
         let a: i64 = bx_unq(x, a0);
         let e: i64 = na_add(&mut x.na, EX_STR);
-        unsafe { x.na.v[e].s = a; }
+        unsafe { na_at(x.na.v, e).s = ( a) as i32; }
         return e;
     }
     if (n == 2 && sp_eqc(&mut x.sp, h, "bool")) {
@@ -1424,7 +1424,7 @@ fn bx_expr(x: &mut Bp, s: i64) -> i64 {
             yes = 1;
         }
         let e: i64 = na_add(&mut x.na, EX_BOOL);
-        unsafe { x.na.v[e].n = yes as i64; }
+        unsafe { na_at(x.na.v, e).n = yes as i64; }
         return e;
     }
     if (n == 1 && sp_eqc(&mut x.sp, h, "null")) {
@@ -1436,7 +1436,7 @@ fn bx_expr(x: &mut Bp, s: i64) -> i64 {
             return 0;
         }
         let e: i64 = na_add(&mut x.na, EX_VAR);
-        unsafe { x.na.v[e].s = a; }
+        unsafe { na_at(x.na.v, e).s = ( a) as i32; }
         return e;
     }
     if (n == 4 && sp_eqc(&mut x.sp, h, "bin")) {
@@ -1454,9 +1454,9 @@ fn bx_expr(x: &mut Bp, s: i64) -> i64 {
         }
         let e: i64 = na_add(&mut x.na, EX_BIN);
         unsafe {
-            x.na.v[e].s = op;
-            x.na.v[e].a = a;
-            x.na.v[e].b = b;
+            na_at(x.na.v, e).s = ( op) as i32;
+            na_at(x.na.v, e).a = ( a) as i32;
+            na_at(x.na.v, e).b = ( b) as i32;
         }
         return e;
     }
@@ -1471,8 +1471,8 @@ fn bx_expr(x: &mut Bp, s: i64) -> i64 {
         }
         let e: i64 = na_add(&mut x.na, EX_UN);
         unsafe {
-            x.na.v[e].s = op2;
-            x.na.v[e].a = a2;
+            na_at(x.na.v, e).s = ( op2) as i32;
+            na_at(x.na.v, e).a = ( a2) as i32;
         }
         return e;
     }
@@ -1493,8 +1493,8 @@ fn bx_expr(x: &mut Bp, s: i64) -> i64 {
         }
         let e: i64 = na_add(&mut x.na, EX_CALL);
         unsafe {
-            x.na.v[e].s = nm;
-            x.na.v[e].l = l;
+            na_at(x.na.v, e).s = ( nm) as i32;
+            na_at(x.na.v, e).l = ( l) as i32;
         }
         return e;
     }
@@ -1509,8 +1509,8 @@ fn bx_expr(x: &mut Bp, s: i64) -> i64 {
         }
         let e: i64 = na_add(&mut x.na, EX_INDEX);
         unsafe {
-            x.na.v[e].a = a;
-            x.na.v[e].b = b;
+            na_at(x.na.v, e).a = ( a) as i32;
+            na_at(x.na.v, e).b = ( b) as i32;
         }
         return e;
     }
@@ -1525,8 +1525,8 @@ fn bx_expr(x: &mut Bp, s: i64) -> i64 {
         }
         let e: i64 = na_add(&mut x.na, EX_FIELD);
         unsafe {
-            x.na.v[e].a = a;
-            x.na.v[e].s = f;
+            na_at(x.na.v, e).a = ( a) as i32;
+            na_at(x.na.v, e).s = ( f) as i32;
         }
         return e;
     }
@@ -1536,7 +1536,7 @@ fn bx_expr(x: &mut Bp, s: i64) -> i64 {
             return 0;
         }
         let e: i64 = na_add(&mut x.na, EX_DEREF);
-        unsafe { x.na.v[e].a = a; }
+        unsafe { na_at(x.na.v, e).a = ( a) as i32; }
         return e;
     }
     if (n == 2 && sp_eqc(&mut x.sp, h, "addr")) {
@@ -1545,7 +1545,7 @@ fn bx_expr(x: &mut Bp, s: i64) -> i64 {
             return 0;
         }
         let e2: i64 = na_add(&mut x.na, EX_ADDR);
-        unsafe { x.na.v[e2].a = a2; }
+        unsafe { na_at(x.na.v, e2).a = ( a2) as i32; }
         return e2;
     }
     if (n == 2 && sp_eqc(&mut x.sp, h, "addrmut")) {
@@ -1554,7 +1554,7 @@ fn bx_expr(x: &mut Bp, s: i64) -> i64 {
             return 0;
         }
         let e3: i64 = na_add(&mut x.na, EX_ADDRMUT);
-        unsafe { x.na.v[e3].a = a3; }
+        unsafe { na_at(x.na.v, e3).a = ( a3) as i32; }
         return e3;
     }
     if (n == 2 && sp_eqc(&mut x.sp, h, "boxnew")) {
@@ -1563,7 +1563,7 @@ fn bx_expr(x: &mut Bp, s: i64) -> i64 {
             return 0;
         }
         let e4: i64 = na_add(&mut x.na, EX_BOXNEW);
-        unsafe { x.na.v[e4].a = a4; }
+        unsafe { na_at(x.na.v, e4).a = ( a4) as i32; }
         return e4;
     }
     if (n == 3 && sp_eqc(&mut x.sp, h, "cast")) {
@@ -1577,8 +1577,8 @@ fn bx_expr(x: &mut Bp, s: i64) -> i64 {
         }
         let e5: i64 = na_add(&mut x.na, EX_CAST);
         unsafe {
-            x.na.v[e5].a = a5;
-            x.na.v[e5].b = t;
+            na_at(x.na.v, e5).a = ( a5) as i32;
+            na_at(x.na.v, e5).b = ( t) as i32;
         }
         return e5;
     }
@@ -1588,7 +1588,7 @@ fn bx_expr(x: &mut Bp, s: i64) -> i64 {
             return 0;
         }
         let e6: i64 = na_add(&mut x.na, EX_SIZEOF);
-        unsafe { x.na.v[e6].a = t2; }
+        unsafe { na_at(x.na.v, e6).a = ( t2) as i32; }
         return e6;
     }
     if (n == 2 && sp_eqc(&mut x.sp, h, "zero")) {
@@ -1597,7 +1597,7 @@ fn bx_expr(x: &mut Bp, s: i64) -> i64 {
             return 0;
         }
         let e7: i64 = na_add(&mut x.na, EX_ZERO);
-        unsafe { x.na.v[e7].a = t3; }
+        unsafe { na_at(x.na.v, e7).a = ( t3) as i32; }
         return e7;
     }
     if (n >= 2 && sp_eqc(&mut x.sp, h, "structlit")) {
@@ -1631,8 +1631,8 @@ fn bx_expr(x: &mut Bp, s: i64) -> i64 {
         }
         let e8: i64 = na_add(&mut x.na, EX_STRUCTLIT);
         unsafe {
-            x.na.v[e8].s = nm2;
-            x.na.v[e8].l = l2;
+            na_at(x.na.v, e8).s = ( nm2) as i32;
+            na_at(x.na.v, e8).l = ( l2) as i32;
         }
         return e8;
     }
@@ -1648,7 +1648,7 @@ fn bx_expr(x: &mut Bp, s: i64) -> i64 {
             i3 += 1;
         }
         let e9: i64 = na_add(&mut x.na, EX_ARRAYLIT);
-        unsafe { x.na.v[e9].l = l3; }
+        unsafe { na_at(x.na.v, e9).l = ( l3) as i32; }
         return e9;
     }
     if (n >= 3 && sp_eqc(&mut x.sp, h, "enumlit")) {
@@ -1672,9 +1672,9 @@ fn bx_expr(x: &mut Bp, s: i64) -> i64 {
         }
         let e10: i64 = na_add(&mut x.na, EX_ENUMLIT);
         unsafe {
-            x.na.v[e10].s = en;
-            x.na.v[e10].s2 = vn;
-            x.na.v[e10].l = l4;
+            na_at(x.na.v, e10).s = ( en) as i32;
+            na_at(x.na.v, e10).s2 = ( vn) as i32;
+            na_at(x.na.v, e10).l = ( l4) as i32;
         }
         return e10;
     }
@@ -1690,7 +1690,7 @@ fn bx_expr(x: &mut Bp, s: i64) -> i64 {
             i5 += 1;
         }
         let e11: i64 = na_add(&mut x.na, EX_TUPLELIT);
-        unsafe { x.na.v[e11].l = l5; }
+        unsafe { na_at(x.na.v, e11).l = ( l5) as i32; }
         return e11;
     }
     if (n == 2 && sp_eqc(&mut x.sp, h, "fnref")) {
@@ -1699,7 +1699,7 @@ fn bx_expr(x: &mut Bp, s: i64) -> i64 {
             return 0;
         }
         let e12: i64 = na_add(&mut x.na, EX_FNREF);
-        unsafe { x.na.v[e12].s = nm3; }
+        unsafe { na_at(x.na.v, e12).s = ( nm3) as i32; }
         return e12;
     }
     if (n >= 2 && sp_eqc(&mut x.sp, h, "callv")) {
@@ -1719,8 +1719,8 @@ fn bx_expr(x: &mut Bp, s: i64) -> i64 {
         }
         let e13: i64 = na_add(&mut x.na, EX_CALLV);
         unsafe {
-            x.na.v[e13].a = f2;
-            x.na.v[e13].l = l6;
+            na_at(x.na.v, e13).a = ( f2) as i32;
+            na_at(x.na.v, e13).l = ( l6) as i32;
         }
         return e13;
     }
@@ -1730,7 +1730,7 @@ fn bx_expr(x: &mut Bp, s: i64) -> i64 {
             return 0;
         }
         let e14: i64 = na_add(&mut x.na, EX_AWAIT);
-        unsafe { x.na.v[e14].a = a10; }
+        unsafe { na_at(x.na.v, e14).a = ( a10) as i32; }
         return e14;
     }
     if (n == 2 && sp_eqc(&mut x.sp, h, "poll")) {
@@ -1739,7 +1739,7 @@ fn bx_expr(x: &mut Bp, s: i64) -> i64 {
             return 0;
         }
         let e15: i64 = na_add(&mut x.na, EX_POLL);
-        unsafe { x.na.v[e15].a = a11; }
+        unsafe { na_at(x.na.v, e15).a = ( a11) as i32; }
         return e15;
     }
     bx_fail(x, "unrecognised expression in IR");
@@ -1776,9 +1776,9 @@ fn bx_pat(x: &mut Bp, s: i64) -> i64 {
             }
             let nd: i64 = na_add(&mut x.na, PT_VARIANT);
             unsafe {
-                x.na.v[nd].s = i1;
-                x.na.v[nd].s2 = i2;
-                x.na.v[nd].l = binds;
+                na_at(x.na.v, nd).s = ( i1) as i32;
+                na_at(x.na.v, nd).s2 = ( i2) as i32;
+                na_at(x.na.v, nd).l = ( binds) as i32;
             }
             return nd;
         }
@@ -1817,8 +1817,8 @@ fn bx_arm(x: &mut Bp, s: i64) -> i64 {
     }
     let nd: i64 = na_add(&mut x.na, AR_ARM);
     unsafe {
-        x.na.v[nd].a = p;
-        x.na.v[nd].l = out;
+        na_at(x.na.v, nd).a = ( p) as i32;
+        na_at(x.na.v, nd).l = ( out) as i32;
     }
     return nd;
 }
@@ -1867,9 +1867,9 @@ fn bx_stmt(x: &mut Bp, s: i64) -> i64 {
             }
             let st: i64 = na_add(&mut x.na, ST_LET);
             unsafe {
-                x.na.v[st].m = isvar;
-                x.na.v[st].s = nm;
-                x.na.v[st].a = t;
+                na_at(x.na.v, st).m = isvar;
+                na_at(x.na.v, st).s = ( nm) as i32;
+                na_at(x.na.v, st).a = ( t) as i32;
             }
             return st;
         }
@@ -1900,10 +1900,10 @@ fn bx_stmt(x: &mut Bp, s: i64) -> i64 {
             }
             let st2: i64 = na_add(&mut x.na, ST_LET);
             unsafe {
-                x.na.v[st2].m = isvar;
-                x.na.v[st2].s = nm2;
-                x.na.v[st2].a = t2;
-                x.na.v[st2].b = val;
+                na_at(x.na.v, st2).m = isvar;
+                na_at(x.na.v, st2).s = ( nm2) as i32;
+                na_at(x.na.v, st2).a = ( t2) as i32;
+                na_at(x.na.v, st2).b = ( val) as i32;
             }
             return st2;
         }
@@ -1925,9 +1925,9 @@ fn bx_stmt(x: &mut Bp, s: i64) -> i64 {
         }
         let st3: i64 = na_add(&mut x.na, ST_ASSIGN);
         unsafe {
-            x.na.v[st3].s = op;
-            x.na.v[st3].a = a;
-            x.na.v[st3].b = b;
+            na_at(x.na.v, st3).s = ( op) as i32;
+            na_at(x.na.v, st3).a = ( a) as i32;
+            na_at(x.na.v, st3).b = ( b) as i32;
         }
         return st3;
     }
@@ -1937,7 +1937,7 @@ fn bx_stmt(x: &mut Bp, s: i64) -> i64 {
             return 0;
         }
         let st4: i64 = na_add(&mut x.na, ST_EXPR);
-        unsafe { x.na.v[st4].a = a2; }
+        unsafe { na_at(x.na.v, st4).a = ( a2) as i32; }
         return st4;
     }
     if (n == 1 && sp_eqc(&mut x.sp, h, "break")) {
@@ -1955,7 +1955,7 @@ fn bx_stmt(x: &mut Bp, s: i64) -> i64 {
             return 0;
         }
         let st5: i64 = na_add(&mut x.na, ST_RETURN);
-        unsafe { x.na.v[st5].a = a3; }
+        unsafe { na_at(x.na.v, st5).a = ( a3) as i32; }
         return st5;
     }
     let is_blk: bool = sp_eqc(&mut x.sp, h, "block");
@@ -1976,7 +1976,7 @@ fn bx_stmt(x: &mut Bp, s: i64) -> i64 {
             i += 1;
         }
         let nd: i64 = na_add(&mut x.na, k);
-        unsafe { x.na.v[nd].l = bl; }
+        unsafe { na_at(x.na.v, nd).l = ( bl) as i32; }
         return nd;
     }
     if (n >= 3 && sp_eqc(&mut x.sp, h, "if")) {
@@ -2011,9 +2011,9 @@ fn bx_stmt(x: &mut Bp, s: i64) -> i64 {
         }
         let st7: i64 = na_add(&mut x.na, ST_IF);
         unsafe {
-            x.na.v[st7].a = cond;
-            x.na.v[st7].l = thl;
-            x.na.v[st7].l2 = el;
+            na_at(x.na.v, st7).a = ( cond) as i32;
+            na_at(x.na.v, st7).l = ( thl) as i32;
+            na_at(x.na.v, st7).l2 = ( el) as i32;
         }
         return st7;
     }
@@ -2034,8 +2034,8 @@ fn bx_stmt(x: &mut Bp, s: i64) -> i64 {
         }
         let st9: i64 = na_add(&mut x.na, ST_WHILE);
         unsafe {
-            x.na.v[st9].a = cond2;
-            x.na.v[st9].l = bl2;
+            na_at(x.na.v, st9).a = ( cond2) as i32;
+            na_at(x.na.v, st9).l = ( bl2) as i32;
         }
         return st9;
     }
@@ -2051,7 +2051,7 @@ fn bx_stmt(x: &mut Bp, s: i64) -> i64 {
             i3 += 1;
         }
         let st11: i64 = na_add(&mut x.na, ST_LOOP);
-        unsafe { x.na.v[st11].l = bl3; }
+        unsafe { na_at(x.na.v, st11).l = ( bl3) as i32; }
         return st11;
     }
     if (n >= 4 && sp_eqc(&mut x.sp, h, "for")) {
@@ -2079,10 +2079,10 @@ fn bx_stmt(x: &mut Bp, s: i64) -> i64 {
         }
         let st13: i64 = na_add(&mut x.na, ST_FOR);
         unsafe {
-            x.na.v[st13].s = vnm;
-            x.na.v[st13].a = a4;
-            x.na.v[st13].b = b4;
-            x.na.v[st13].l = bl4;
+            na_at(x.na.v, st13).s = ( vnm) as i32;
+            na_at(x.na.v, st13).a = ( a4) as i32;
+            na_at(x.na.v, st13).b = ( b4) as i32;
+            na_at(x.na.v, st13).l = ( bl4) as i32;
         }
         return st13;
     }
@@ -2103,8 +2103,8 @@ fn bx_stmt(x: &mut Bp, s: i64) -> i64 {
         }
         let st14: i64 = na_add(&mut x.na, ST_MATCH);
         unsafe {
-            x.na.v[st14].a = scrut;
-            x.na.v[st14].l = arms;
+            na_at(x.na.v, st14).a = ( scrut) as i32;
+            na_at(x.na.v, st14).l = ( arms) as i32;
         }
         return st14;
     }
@@ -2165,9 +2165,9 @@ fn bx_program(x: &mut Bp) -> Pr {
             }
             let nd: i64 = na_add(&mut x.na, IT_CONST);
             unsafe {
-                x.na.v[nd].s = nm2;
-                x.na.v[nd].a = t;
-                x.na.v[nd].b = v;
+                na_at(x.na.v, nd).s = ( nm2) as i32;
+                na_at(x.na.v, nd).a = ( t) as i32;
+                na_at(x.na.v, nd).b = ( v) as i32;
             }
             lp_push(&mut x.lp, p.c, nd);
         }
@@ -2213,8 +2213,8 @@ fn bx_program(x: &mut Bp) -> Pr {
             }
             let sd: i64 = na_add(&mut x.na, IT_STRUCT);
             unsafe {
-                x.na.v[sd].s = nm3;
-                x.na.v[sd].l = fl;
+                na_at(x.na.v, sd).s = ( nm3) as i32;
+                na_at(x.na.v, sd).l = ( fl) as i32;
             }
             lp_push(&mut x.lp, p.s, sd);
         } else if (sp_eqc(&mut x.sp, hn, "enum")) {
@@ -2273,8 +2273,8 @@ fn bx_program(x: &mut Bp) -> Pr {
             }
             let ed: i64 = na_add(&mut x.na, IT_ENUM);
             unsafe {
-                x.na.v[ed].s = nm4;
-                x.na.v[ed].l = vl;
+                na_at(x.na.v, ed).s = ( nm4) as i32;
+                na_at(x.na.v, ed).l = ( vl) as i32;
             }
             lp_push(&mut x.lp, p.e, ed);
         } else if (sp_eqc(&mut x.sp, hn, "extern")) {
@@ -2332,11 +2332,11 @@ fn bx_program(x: &mut Bp) -> Pr {
             }
             let xd: i64 = na_add(&mut x.na, IT_EXTERN);
             unsafe {
-                x.na.v[xd].s = nm5;
-                x.na.v[xd].s2 = lib;
-                x.na.v[xd].l = ps;
-                x.na.v[xd].a = ret;
-                x.na.v[xd].m = variadic;
+                na_at(x.na.v, xd).s = ( nm5) as i32;
+                na_at(x.na.v, xd).s2 = ( lib) as i32;
+                na_at(x.na.v, xd).l = ( ps) as i32;
+                na_at(x.na.v, xd).a = ( ret) as i32;
+                na_at(x.na.v, xd).m = variadic;
             }
             lp_push(&mut x.lp, p.x, xd);
         } else if (sp_eqc(&mut x.sp, hn, "fn")) {
@@ -2410,13 +2410,13 @@ fn bx_program(x: &mut Bp) -> Pr {
             }
             let fd: i64 = na_add(&mut x.na, IT_FN);
             unsafe {
-                x.na.v[fd].s = nm6;
-                x.na.v[fd].l = gens;
-                x.na.v[fd].l2 = ps2;
-                x.na.v[fd].a = ret2;
-                x.na.v[fd].n = asy as i64;
-                x.na.v[fd].m = cab;
-                x.na.v[fd].l3 = body;
+                na_at(x.na.v, fd).s = ( nm6) as i32;
+                na_at(x.na.v, fd).l = ( gens) as i32;
+                na_at(x.na.v, fd).l2 = ( ps2) as i32;
+                na_at(x.na.v, fd).a = ( ret2) as i32;
+                na_at(x.na.v, fd).n = asy as i64;
+                na_at(x.na.v, fd).m = cab;
+                na_at(x.na.v, fd).l3 = ( body) as i32;
             }
             lp_push(&mut x.lp, p.f, fd);
         } else {

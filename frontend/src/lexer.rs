@@ -149,8 +149,8 @@ fn sym_at(src: &[u8], pos: usize) -> Option<(&'static str, usize)> {
     }
 }
 
-fn dec_i64(digits: &[u8]) -> Option<i64> {
-    let mut v: i64 = 0;
+fn dec_u64(digits: &[u8]) -> Option<u64> {
+    let mut v: u64 = 0;
     for &d in digits {
         if d == b'_' {
             continue;
@@ -158,13 +158,13 @@ fn dec_i64(digits: &[u8]) -> Option<i64> {
         if !d.is_ascii_digit() {
             return None;
         }
-        v = v.checked_mul(10)?.checked_add((d - b'0') as i64)?;
+        v = v.checked_mul(10)?.checked_add((d - b'0') as u64)?;
     }
     Some(v)
 }
 
-fn hex_i64(digits: &[u8]) -> Option<i64> {
-    let mut v: i64 = 0;
+fn hex_u64(digits: &[u8]) -> Option<u64> {
+    let mut v: u64 = 0;
     for &d in digits {
         if d == b'_' {
             continue;
@@ -175,7 +175,7 @@ fn hex_i64(digits: &[u8]) -> Option<i64> {
             b'A'..=b'F' => d - b'A' + 10,
             _ => return None,
         };
-        v = v.checked_mul(16)?.checked_add(nib as i64)?;
+        v = v.checked_mul(16)?.checked_add(nib as u64)?;
     }
     Some(v)
 }
@@ -258,9 +258,9 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
                 if i == hs {
                     return Err(format!("line {}: empty hex literal", sline));
                 }
-                let v = hex_i64(&b[hs..i])
+                let v = hex_u64(&b[hs..i])
                     .ok_or_else(|| format!("line {}: hex literal does not fit in 64 bits", sline))?;
-                out.push(Token { tok: Tok::Int(v), line: sline, col: scol });
+                out.push(Token { tok: Tok::Int(v as i64), line: sline, col: scol });
                 continue;
             }
 
@@ -297,9 +297,9 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, String> {
             }
 
             if !is_float {
-                let v = dec_i64(&b[start..i])
+                let v = dec_u64(&b[start..i])
                     .ok_or_else(|| format!("line {}: integer literal out of range", sline))?;
-                out.push(Token { tok: Tok::Int(v), line: sline, col: scol });
+                out.push(Token { tok: Tok::Int(v as i64), line: sline, col: scol });
                 continue;
             }
             let text: String =

@@ -47,6 +47,15 @@ let mem c ~reg ~base ~disp =
   if rm = 4 then b c 0x24;
   if mod_ = 1 then b c (disp land 0xff) else if mod_ = 2 then u32 c disp
 
+let scale_bits s = match s with 1 -> 0 | 2 -> 1 | 4 -> 2 | _ -> 3
+
+let mem_s c ~reg ~base ~index ~scale ~disp =
+  let bm = base land 7 in
+  let mod_ = if disp = 0 && bm <> 5 then 0 else if disp >= -128 && disp <= 127 then 1 else 2 in
+  modrm c mod_ reg 4;
+  b c ((scale_bits scale lsl 6) lor ((index land 7) lsl 3) lor bm);
+  if mod_ = 1 then b c (disp land 0xff) else if mod_ = 2 then u32 c disp
+
 let riprel c ~reg ~disp =
   modrm c 0 reg 5;
   u32 c disp
@@ -92,6 +101,77 @@ let imul_rr c dst src =
   b c 0x0F;
   b c 0xAF;
   rr c ~reg:dst ~rm:src
+
+let imul_rm c dst base disp =
+  rex c ~w:true ~r:dst ~x:0 ~bb:base;
+  b c 0x0F;
+  b c 0xAF;
+  mem c ~reg:dst ~base ~disp
+
+let imul_ri c dst v =
+  rex c ~w:true ~r:dst ~x:0 ~bb:dst;
+  if v >= -128 && v <= 127 then begin
+    b c 0x6B;
+    rr c ~reg:dst ~rm:dst;
+    b c (v land 0xff)
+  end
+  else begin
+    b c 0x69;
+    rr c ~reg:dst ~rm:dst;
+    u32 c v
+  end
+
+let alu_ri_enc c op dst v =
+  rex c ~w:true ~r:0 ~x:0 ~bb:dst;
+  if v >= -128 && v <= 127 then begin
+    b c 0x83;
+    rr c ~reg:op ~rm:dst;
+    b c (v land 0xff)
+  end
+  else begin
+    b c 0x81;
+    rr c ~reg:op ~rm:dst;
+    u32 c v
+  end
+
+let add_ri c dst v = alu_ri_enc c 0 dst v
+let or_ri c dst v = alu_ri_enc c 1 dst v
+let and_ri c dst v = alu_ri_enc c 4 dst v
+let sub_ri c dst v = alu_ri_enc c 5 dst v
+let xor_ri c dst v = alu_ri_enc c 6 dst v
+let cmp_ri c dst v = alu_ri_enc c 7 dst v
+
+let alu_rm_enc c op dst base disp =
+  rex c ~w:true ~r:dst ~x:0 ~bb:base;
+  b c op;
+  mem c ~reg:dst ~base ~disp
+
+let add_rm c dst base disp = alu_rm_enc c 0x03 dst base disp
+let or_rm c dst base disp = alu_rm_enc c 0x0B dst base disp
+let and_rm c dst base disp = alu_rm_enc c 0x23 dst base disp
+let sub_rm c dst base disp = alu_rm_enc c 0x2B dst base disp
+let xor_rm c dst base disp = alu_rm_enc c 0x33 dst base disp
+let cmp_rm c dst base disp = alu_rm_enc c 0x3B dst base disp
+
+let inc_rr c r =
+  rex c ~w:true ~r:0 ~x:0 ~bb:r;
+  b c 0xFF;
+  rr c ~reg:0 ~rm:r
+
+let dec_rr c r =
+  rex c ~w:true ~r:0 ~x:0 ~bb:r;
+  b c 0xFF;
+  rr c ~reg:1 ~rm:r
+
+let shift_imm c op r v =
+  rex c ~w:true ~r:0 ~x:0 ~bb:r;
+  b c 0xC1;
+  rr c ~reg:op ~rm:r;
+  b c (v land 0xff)
+
+let shl_imm c r v = shift_imm c 4 r v
+let shr_imm c r v = shift_imm c 5 r v
+let sar_imm c r v = shift_imm c 7 r v
 
 let unary c op reg =
   rex c ~w:true ~r:0 ~x:0 ~bb:reg;
@@ -188,6 +268,71 @@ let lea c dst base disp =
   rex c ~w:true ~r:dst ~x:0 ~bb:base;
   b c 0x8D;
   mem c ~reg:dst ~base ~disp
+
+let lea_s c dst base index scale disp =
+  rex c ~w:true ~r:dst ~x:index ~bb:base;
+  b c 0x8D;
+  mem_s c ~reg:dst ~base ~index ~scale ~disp
+
+let load64_s c dst base index scale disp =
+  rex c ~w:true ~r:dst ~x:index ~bb:base;
+  b c 0x8B;
+  mem_s c ~reg:dst ~base ~index ~scale ~disp
+
+let load32_s c dst base index scale disp =
+  rex c ~w:false ~r:dst ~x:index ~bb:base;
+  b c 0x8B;
+  mem_s c ~reg:dst ~base ~index ~scale ~disp
+
+let movsxd_s c dst base index scale disp =
+  rex c ~w:true ~r:dst ~x:index ~bb:base;
+  b c 0x63;
+  mem_s c ~reg:dst ~base ~index ~scale ~disp
+
+let movsx8_s c dst base index scale disp =
+  rex c ~w:true ~r:dst ~x:index ~bb:base;
+  b c 0x0F;
+  b c 0xBE;
+  mem_s c ~reg:dst ~base ~index ~scale ~disp
+
+let movzx8_s c dst base index scale disp =
+  rex c ~w:true ~r:dst ~x:index ~bb:base;
+  b c 0x0F;
+  b c 0xB6;
+  mem_s c ~reg:dst ~base ~index ~scale ~disp
+
+let movsx16_s c dst base index scale disp =
+  rex c ~w:true ~r:dst ~x:index ~bb:base;
+  b c 0x0F;
+  b c 0xBF;
+  mem_s c ~reg:dst ~base ~index ~scale ~disp
+
+let movzx16_s c dst base index scale disp =
+  rex c ~w:true ~r:dst ~x:index ~bb:base;
+  b c 0x0F;
+  b c 0xB7;
+  mem_s c ~reg:dst ~base ~index ~scale ~disp
+
+let store64_s c src base index scale disp =
+  rex c ~w:true ~r:src ~x:index ~bb:base;
+  b c 0x89;
+  mem_s c ~reg:src ~base ~index ~scale ~disp
+
+let store32_s c src base index scale disp =
+  rex c ~w:false ~r:src ~x:index ~bb:base;
+  b c 0x89;
+  mem_s c ~reg:src ~base ~index ~scale ~disp
+
+let store16_s c src base index scale disp =
+  b c 0x66;
+  rex c ~w:false ~r:src ~x:index ~bb:base;
+  b c 0x89;
+  mem_s c ~reg:src ~base ~index ~scale ~disp
+
+let store8_s c src base index scale disp =
+  rex c ~w:false ~r:src ~x:index ~bb:base;
+  b c 0x88;
+  mem_s c ~reg:src ~base ~index ~scale ~disp
 
 let mov_mem_imm32 c base disp v =
   rex c ~w:true ~r:0 ~x:0 ~bb:base;

@@ -115,24 +115,47 @@ function Invoke-Build {
     }
 }
 
+function Resolve-Binary([string]$Name) {
+    $bundle = Join-Path $Root 'bin'
+    $p = Join-Path $bundle $Name
+    if (Test-Path -LiteralPath $p) { return $p }
+    switch ($Name) {
+        'rsc.exe' { $p = Join-Path $Root 'frontend\target\release\rsc.exe' }
+        'rscb.exe' { $p = Join-Path $Root 'backend\rscb.exe' }
+        'rscvm.exe' { $p = Join-Path $Root 'backend\rscvm.exe' }
+        'rmake.exe' { $p = Join-Path $Root 'build\rmake.exe' }
+        'cdc.exe' { $p = Join-Path $Root 'cdc\target\release\cdc.exe' }
+        'mini.exe' { $p = Join-Path $Root 'mini\mini.exe' }
+        default { $p = '' }
+    }
+    if ($p -and (Test-Path -LiteralPath $p)) { return $p }
+    return ''
+}
+
 function Get-Binaries {
-    $list = @()
-    $front = Join-Path $Root 'frontend\target\release\rsc.exe'
-    $back = Join-Path $Root 'backend\rscb.exe'
-    if (-not (Test-Path -LiteralPath $front) -or -not (Test-Path -LiteralPath $back)) {
+    $required = @('rsc.exe', 'rscb.exe', 'rscvm.exe', 'rmake.exe')
+    $optional = @('cdc.exe', 'mini.exe')
+
+    $probe = @{}
+    foreach ($n in ($required + $optional)) { $probe[$n] = Resolve-Binary $n }
+    $missing = @($required | Where-Object { -not $probe[$_] })
+    if ($missing.Count -gt 0) {
         if ($NoBuild) {
-            Fail 'the toolchain is not built; drop --no-build or run build.ps1'
+            Fail ('missing ' + ($missing -join ', ') + '; drop --no-build or run build.ps1')
         }
         Invoke-Build
+        $script:NoBuild = $true
+        foreach ($n in ($required + $optional)) { $probe[$n] = Resolve-Binary $n }
+        $missing = @($required | Where-Object { -not $probe[$_] })
+        if ($missing.Count -gt 0) {
+            Fail ('the build did not produce ' + ($missing -join ', '))
+        }
     }
-    if (-not (Test-Path -LiteralPath $front)) { Fail "missing $front" }
-    if (-not (Test-Path -LiteralPath $back)) { Fail "missing $back" }
-    $list += @{ Name = 'rsc.exe'; Path = $front }
-    $list += @{ Name = 'rscb.exe'; Path = $back }
-    $cdc = Join-Path $Root 'cdc\target\release\cdc.exe'
-    if (Test-Path -LiteralPath $cdc) { $list += @{ Name = 'cdc.exe'; Path = $cdc } }
-    $mini = Join-Path $Root 'mini\mini.exe'
-    if (Test-Path -LiteralPath $mini) { $list += @{ Name = 'mini.exe'; Path = $mini } }
+
+    $list = @()
+    foreach ($n in ($required + $optional)) {
+        if ($probe[$n]) { $list += @{ Name = $n; Path = $probe[$n] } }
+    }
     return $list
 }
 
@@ -157,14 +180,21 @@ set "FRONT=%TC%\rsc.exe"
 set "BACK=%TC%\rscb.exe"
 
 set "TGT=windows"
+set "VM="
+if /i "%~1"=="--vm" (
+    set "VM=1"
+    shift
+)
 if /i "%~1"=="-t" (
-    set "TGT=%~2"
-    shift
-    shift
+    if not defined VM (
+        set "TGT=%~2"
+        shift
+        shift
+    )
 )
 
 if "%~1"=="" (
-    echo usage: rsc [-t windows^|macos] ^<file.rsx^> [out]
+    echo usage: rsc [--vm] [-t windows^|macos^|linux] ^<file.rsx^> [out]
     exit /b 2
 )
 
@@ -174,7 +204,13 @@ for %%F in ("%IN%") do (
     set "STEM=%%~nF"
 )
 
-if "%TGT%"=="macos" (set "EXT=") else (set "EXT=.exe")
+if defined VM (
+    set "EXT=.rvm"
+) else if "%TGT%"=="macos" (
+    set "EXT="
+) else (
+    set "EXT=.exe"
+)
 if "%~2"=="" (set "OUT=%DIR%%STEM%%EXT%") else (set "OUT=%~f2")
 set "IR=%DIR%%STEM%.rsi"
 
@@ -183,13 +219,56 @@ for %%D in ("%OUT%") do if not exist "%%~dpD" mkdir "%%~dpD" >nul 2>&1
 "%FRONT%" "%IN%" -o "%IR%"
 if errorlevel 1 exit /b 1
 
-"%BACK%" "%IR%" -o "%OUT%" -s "%IN%" -t "%TGT%"
+if defined VM (
+    "%BACK%" "%IR%" --vm -o "%OUT%" -s "%IN%"
+) else (
+    "%BACK%" "%IR%" -o "%OUT%" -s "%IN%" -t "%TGT%"
+)
 if errorlevel 1 exit /b 1
 
 del "%IR%" >nul 2>&1
 echo built %OUT%
 '@
     Set-Content -LiteralPath (Join-Path $script:BinDir 'rsc.cmd') -Value $rsc -Encoding ASCII
+
+    $rmake = @'
+@echo off
+setlocal EnableDelayedExpansion
+set "TC=%~dp0..\toolchain"
+if not exist ".rmake" mkdir ".rmake" >nul 2>&1
+set "ARGS=%CD%\.rmake\cmd.txt"
+set "FIRST=%~1"
+>"%ARGS%" echo --rsc
+>>"%ARGS%" echo %~dp0rsc.cmd
+:args
+if "%~1"=="" goto run
+set "A=%~1"
+>>"%ARGS%" echo(!A!
+shift
+goto args
+:run
+set "RMAKE_CMD=%ARGS%"
+if /i "!FIRST!"=="help" goto plain
+if /i "!FIRST!"=="--help" goto plain
+if /i "!FIRST!"=="-h" goto plain
+set "RMAKE_SEEK=1"
+:seek
+"%TC%\rmake.exe"
+set "RC=%ERRORLEVEL%"
+if not "%RC%"=="3" exit /b %RC%
+set "LAST=%CD%"
+cd ..
+if "%CD%"=="%LAST%" goto notfound
+goto seek
+:notfound
+echo rmake: no RMakefile in this directory or any parent
+echo rmake: pass --manifest PATH to name a build file
+exit /b 1
+:plain
+"%TC%\rmake.exe"
+exit /b %ERRORLEVEL%
+'@
+    Set-Content -LiteralPath (Join-Path $script:BinDir 'rmake.cmd') -Value $rmake -Encoding ASCII
 
     foreach ($name in 'rscb', 'cdc', 'mini') {
         $exe = Join-Path $script:Toolchain ($name + '.exe')
